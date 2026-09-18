@@ -151,7 +151,7 @@ textarea { resize: vertical; }
 .msg.assistant .body h3:first-child { margin-top: 0; }
 .msg.assistant .body p { margin: 6px 0; }
 .msg.assistant .body ul { margin: 6px 0; padding-left: 20px; }
-.msg.assistant .body .draft { white-space: pre-wrap; background: var(--panel-2); border-radius: 8px; padding: 12px 14px; line-height: 1.75; }
+.msg.assistant .body .draft { white-space: normal; background: var(--panel-2); border-radius: 8px; padding: 12px 14px; line-height: 1.75; }
 .msg-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); font-size: 12.5px; color: var(--muted); }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; background: var(--panel-2); color: var(--muted); }
 .badge.ok { background: var(--ok-soft); color: var(--ok); }
@@ -356,3 +356,5 @@ details.sources.card summary { cursor: pointer; font-weight: 600; }
 .cand-meta b { color: var(--text); font-weight: 600; margin-right: 2px; }
 .cand details summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
 .cand details textarea { margin-top: 6px; }
+.msg.assistant .body .draft p { margin: 0 0 12px; }
+.msg.assistant .body .draft p:last-child { margin-bottom: 0; }

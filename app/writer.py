@@ -43,6 +43,14 @@ def _last_draft(history: list[dict]) -> str | None:
     return None
 
 
+def _last_sources(history: list[dict]) -> list[dict]:
+    """글자수 보정은 직전 초안을 고쳐 쓰는 것이므로 그 초안의 참고자료를 이어받아 표시."""
+    for m in reversed(history):
+        if m["role"] == "assistant" and m["meta"].get("sources"):
+            return m["meta"]["sources"]
+    return []
+
+
 def _sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
@@ -73,6 +81,7 @@ def chat(session_id: str, message: str, action: str = "chat") -> Iterator[str]:
                 direction = "이미 범위 안이지만, 범위의 가운데에 가깝게 다듬으세요."
             message = prompts.LENGTH_ADJUST.format(current=cur, target=prompts.range_text(lo, hi), direction=direction)
             turn_input = message
+            sources = _last_sources(history)
         else:
             queries = [message, session.get("question") or ""]
             if settings.rag_query_expansion:
