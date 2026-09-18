@@ -37,14 +37,13 @@ function costTable() {
   const cmp = models.map((m) => {
     const usd = estimate("draft", m), p = c.pricing[m];
     return `<tr><td>${esc(m)}${m === c.writer_model ? ' <span class="badge ok">현재 기본</span>' : ""}</td>
-      <td class="num">$${p.input} / $${p.output}</td><td class="num">${fmtUsd(usd)}</td><td class="num">${fmtKrw(usd)}</td>
-      <td class="num">${fmtKrw(usd * 100)}</td></tr>`;
+      <td class="num">$${p.input} / $${p.output}</td><td class="num">${fmtUsd(usd)}</td><td class="num">${fmtKrw(usd)}</td></tr>`;
   }).join("");
   return `
     <h4>현재 설정 기준 예상 비용</h4>
     <div class="table-wrap"><table class="table compact"><thead><tr><th>작업</th><th class="num">USD</th><th class="num">원화</th></tr></thead><tbody>${rows}</tbody></table></div>
     <h4>작성 모델별 비교 (초안 1회 기준)</h4>
-    <div class="table-wrap"><table class="table compact"><thead><tr><th>모델</th><th class="num">단가 입력/출력 (1M 토큰)</th><th class="num">1회</th><th class="num">1회 원화</th><th class="num">100회 원화</th></tr></thead><tbody>${cmp}</tbody></table></div>
+    <div class="table-wrap"><table class="table compact"><thead><tr><th>모델</th><th class="num">단가 입력/출력 (1M 토큰)</th><th class="num">1회 (USD)</th><th class="num">1회 (원화)</th></tr></thead><tbody>${cmp}</tbody></table></div>
     <p class="note">※ 실제 사용량 평균으로 잡은 <b>대략적인 추정치</b>입니다. 자료 양, 대화 길이, 추론 강도(현재 <code>${esc(c.reasoning_effort || "medium")}</code>)에 따라 달라집니다. 추론 모델은 답변에 보이지 않는 '생각' 토큰도 출력 요금으로 청구됩니다. 정확한 금액은 <b>💰 사용량</b> 페이지에서 확인하세요.</p>`;
 }
 
@@ -136,6 +135,7 @@ function renderTutorial() {
           <tr><td>추출 텍스트</td><td><code>data/raw</code></td><td>임베딩 시 <b>마스킹된 조각만</b></td></tr>
           <tr><td>자소서 대화·초안</td><td><code>data/app.db</code></td><td>작성 요청 시 최근 대화를 <b>마스킹 후</b></td></tr>
           <tr><td>기업 분석 결과</td><td><code>data/app.db</code></td><td>작성 요청 시 맞춤 지침으로 포함</td></tr>
+          <tr><td>마스터 프로필</td><td><code>data/app.db</code>, <code>data/chroma</code></td><td>검색 등록·작성 시 <b>마스킹 후</b> (🔒 메모 칸은 ❌)</td></tr>
         </tbody></table></div>
     </div>
 
@@ -145,9 +145,10 @@ function renderTutorial() {
       <div class="flow">
         <div class="flow-step"><b>1</b>⚙️ 초기 설정<small>API 키 입력</small></div>
         <div class="flow-step"><b>2</b>📚 자료 관리<small>이력서·포트폴리오 업로드</small></div>
-        <div class="flow-step"><b>3</b>🏢 기업 분석<small>JD·URL로 맞춤 프롬프트</small></div>
-        <div class="flow-step"><b>4</b>✍️ 작성<small>문항별 초안·첨삭</small></div>
-        <div class="flow-step"><b>5</b>💰 사용량<small>비용 확인</small></div>
+        <div class="flow-step"><b>3</b>🗂 마스터 프로필<small>이력 정리 (선택, 추천)</small></div>
+        <div class="flow-step"><b>4</b>🏢 기업 분석<small>JD·URL로 맞춤 프롬프트</small></div>
+        <div class="flow-step"><b>5</b>✍️ 작성 · 🧩 기타 문항<small>자소서 문항·항목별 칸</small></div>
+        <div class="flow-step"><b>6</b>💰 사용량<small>비용 확인</small></div>
       </div>
     </div>
 
@@ -187,6 +188,23 @@ function renderTutorial() {
        "글자수가 범위를 벗어나면 자동으로 한 번 보정합니다(오른쪽 체크박스로 끌 수 있음). 보정도 1회 요청이라 비용이 듭니다.",
        "내가 쓴 초안을 붙여넣고 “첨삭해줘”라고 요청해도 됩니다.",
        "대화가 길어질수록 매 요청의 입력 토큰(비용)이 늘어납니다. 방향을 바꿀 때는 <b>대화 비우기</b>나 새 문항을 쓰세요."])}
+    ${pageCard("🧩", "기타 문항", "extra",
+      "지원서의 <b>경력·연구실적·프로젝트 같은 항목별 칸</b>(예: 주요 내용, 직무연관성, 담당업무)을 작성합니다. 회사마다 칸이 달라도 칸 이름과 글자수만 입력하면 됩니다.",
+      ["<b>대주제</b>(예: 연구실적), <b>소주제</b>(예: 논문, 선택), <b>이름</b>(예: 실제 논문명)을 입력합니다. 이름 칸을 누르면 마스터 프로필 항목이 목록으로 나오고, 고르면 대주제·소주제가 자동으로 채워지며 ✅ 연결됨으로 표시됩니다.",
+       "<b>지원 기업</b>을 선택하면 기업 분석 결과가 반영됩니다. 직무연관성을 쓸 때는 꼭 선택하세요.",
+       "<b>출력할 내용</b>에 지원서 칸 이름과 최소·최대 글자수를 입력합니다. 대주제에 맞는 추천 칩을 눌러 빠르게 추가할 수 있습니다.",
+       "<b>✨ 작성하기</b>를 누르면 모든 항목을 한 번에, 서로 내용이 겹치지 않게 작성합니다. 칸마다 <b>복사</b>, <b>다시 쓰기</b>, 직접 고친 뒤 <b>수정 저장</b>을 할 수 있습니다."],
+      ["근거 순서: ① 마스터 프로필(최우선) → ② 등록한 자료(RAG) → ③ 기업 맞춤 지침. 마스터 프로필이 없어도 자료만으로 작성할 수 있지만, 정리해 두면 훨씬 정확합니다.",
+       "<b>보완 질문</b>에 나온 정보를 마스터 프로필 '상세 내용'에 추가하고 다시 작성하면 반영됩니다.",
+       "비용은 항목 2개 기준 1회 약 $0.02~0.04입니다(작성 모델에 따라 다름). 작성 이력은 왼쪽 목록에 저장됩니다."])}
+    ${pageCard("🗂", "마스터 프로필", "profile",
+      "지원서에 반복해서 쓰는 이력을 <b>대주제(연구실적) → 소주제(논문, 선택) → 이름(실제 논문명)</b>으로 한 번만 정리해 두는 곳입니다.",
+      ["<b>+ 새 항목</b>을 누르고 대주제, 소주제(추천 목록에서 선택 가능), 이름(논문명·프로젝트명·회사명 등)을 입력합니다.",
+       "기간, 소속·기관, 역할, 기술·키워드, 성과·수치를 채우고, <b>상세 내용</b>에 배경 → 한 일 → 방법 → 결과 → 배운 점을 자세히 적습니다.",
+       "<b>저장</b>하면 검색에 자동 등록되어 기타 문항 작성의 최우선 근거가 되고, 자소서 작성 검색에도 포함됩니다.",
+       "<b>🧩 이 항목으로 기타 문항 작성</b>을 누르면 바로 작성 화면으로 이동합니다."],
+      ["🔒 <b>AI에 보내지 않는 메모</b> 칸(연봉 등)은 저장만 되고 AI 요청이나 검색에 절대 포함되지 않습니다.",
+       "검색 등록에는 임베딩만 쓰므로 비용이 거의 들지 않습니다(항목 20개에 약 0.3원). 자소서 작성 시 보내는 양도 늘지 않습니다."])}
     ${pageCard("💰", "사용량", "usage",
       "이 앱이 보낸 모든 요청의 토큰 사용량으로 계산한 <b>실시간 추정 비용</b>을 보여줍니다.",
       ["오늘, 이번 달, 누적 비용과 월 예산 사용률을 확인합니다.",

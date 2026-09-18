@@ -48,10 +48,63 @@ function switchView(name) {
   if (name === "company") renderCompanyList();
   if (name === "setup") renderSetup();
   if (name === "tutorial") renderTutorial();
+  if (name === "profile") renderProfile();
+  if (name === "extra") renderExtra();
 }
 $$(".nav-btn").forEach((b) => (b.onclick = () => switchView(b.dataset.view)));
 $("#costPill").onclick = () => switchView("usage");
 $("#bannerSetup").onclick = () => switchView("setup");
+
+// ---- 콤보박스: 직접 입력 + 스타일이 맞는 추천 목록 (브라우저 기본 datalist 대체) ----
+// getOptions() → [{value, label?, sub?}] 또는 문자열 배열. onPick(option)은 선택 시 호출.
+function combo(input, getOptions, onPick) {
+  input.autocomplete = "off";
+  input.classList.add("combo-input");
+  const host = input.parentElement;
+  host.classList.add("combo-host");
+  const menu = document.createElement("div");
+  menu.className = "combo-menu";
+  menu.hidden = true;
+  host.appendChild(menu);
+  let opts = [], idx = -1, filtered = false;
+  const norm = (o) => (typeof o === "string" ? { value: o } : o);
+  const show = (filter) => {
+    filtered = filter;
+    const q = filter ? input.value.trim().toLowerCase() : "";
+    opts = getOptions().map(norm).filter((o) => !q || (o.label || o.value).toLowerCase().includes(q) || (o.sub || "").toLowerCase().includes(q));
+    if (!opts.length) { menu.hidden = true; return; }
+    idx = Math.min(idx, opts.length - 1);
+    menu.innerHTML = opts.map((o, i) => `<div class="combo-opt ${i === idx ? "active" : ""}" data-i="${i}">
+      <span>${esc(o.label || o.value)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ""}</div>`).join("");
+    menu.hidden = false;
+    $$(".combo-opt", menu).forEach((el) => el.addEventListener("mousedown", (e) => { e.preventDefault(); pick(+el.dataset.i); }));
+    menu.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+  };
+  const pick = (i) => {
+    const o = opts[i];
+    if (!o) return;
+    input.value = o.value;
+    menu.hidden = true;
+    input.dispatchEvent(new Event("input"));
+    menu.hidden = true;
+    onPick && onPick(o);
+  };
+  input.addEventListener("focus", () => { idx = -1; show(false); });
+  input.addEventListener("input", () => { if (document.activeElement === input) { idx = -1; show(true); } });
+  input.addEventListener("blur", () => setTimeout(() => (menu.hidden = true), 120));
+  input.addEventListener("keydown", (e) => {
+    if (e.isComposing) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (menu.hidden) show(false);
+      if (!opts.length) return;
+      idx = (idx + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+      show(filtered);
+    } else if (e.key === "Enter" && !menu.hidden && idx >= 0) { e.preventDefault(); pick(idx); }
+    else if (e.key === "Escape") menu.hidden = true;
+  });
+  return { refresh: () => { if (!menu.hidden) show(false); } };
+}
 
 // 설정 저장 후 호출: 배너·개인정보 표시·모델 목록 갱신
 async function applyConfig() {

@@ -50,6 +50,33 @@ CREATE TABLE IF NOT EXISTS messages (
     meta_json TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS profile_entries (   -- 마스터 프로필 (대주제별 이력 항목)
+    id TEXT PRIMARY KEY,
+    section TEXT NOT NULL,              -- 대주제: 경력, 연구실적 ...
+    subtopic TEXT,                      -- 소주제(구분, 선택): 논문, 특허, 인턴 ...
+    title TEXT NOT NULL,                -- 이름: 논문명, 프로젝트명, 회사명 ...
+    period TEXT, org TEXT, role TEXT, achievements TEXT, keywords TEXT,
+    details TEXT,                       -- 상세 내용 (자유 서술)
+    private_note TEXT,                  -- AI에 보내지 않는 메모 (연봉 등)
+    indexed INTEGER DEFAULT 0,          -- RAG 등록 여부
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS extra_answers (     -- 기타 문항 작성 이력
+    id TEXT PRIMARY KEY,
+    company_id TEXT,
+    section TEXT NOT NULL,
+    subtopic TEXT,
+    title TEXT NOT NULL,
+    entry_id TEXT,
+    request TEXT,                       -- 추가 요청
+    model TEXT,
+    items_json TEXT NOT NULL,           -- [{label, min, max}]
+    results_json TEXT,                  -- {label: text}
+    meta_json TEXT,                     -- sources, questions, cost
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -94,6 +121,9 @@ def init():
         cols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
         if "char_min" not in cols:
             c.execute("ALTER TABLE sessions ADD COLUMN char_min INTEGER")
+        for table in ("profile_entries", "extra_answers"):
+            if "subtopic" not in {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN subtopic TEXT")
 
 
 def rows(sql: str, params=()) -> list[dict]:

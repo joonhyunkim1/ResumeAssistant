@@ -84,6 +84,20 @@ def embed(texts: list[str], purpose: str = "임베딩") -> list[list[float]]:
 
 # ---------------- 텍스트 생성 ----------------
 
+_JSON_NOTE = "\n\n(응답은 반드시 JSON 객체 하나로만 출력하세요.)"
+
+
+def _ensure_json_word(input):
+    if isinstance(input, str):
+        return input if "json" in input.lower() else input + _JSON_NOTE
+    msgs = list(input)
+    if any("json" in str(m.get("content", "")).lower() for m in msgs):
+        return msgs
+    last = dict(msgs[-1])
+    last["content"] = str(last.get("content", "")) + _JSON_NOTE
+    return msgs[:-1] + [last]
+
+
 def complete(model: str, instructions: str, input, purpose: str, tools: list | None = None,
              effort: str | None = None, json_mode: bool = False):
     """단발성 호출. (응답 객체, 비용 정보) 반환."""
@@ -92,6 +106,8 @@ def complete(model: str, instructions: str, input, purpose: str, tools: list | N
     if tools:
         kwargs["tools"] = tools
     if json_mode:
+        # OpenAI 규칙: json_object 형식을 쓰려면 input 메시지에 'json'이라는 단어가 있어야 한다 (instructions만으로는 부족)
+        kwargs["input"] = _ensure_json_word(input)
         kwargs["text"] = {"format": {"type": "json_object"}}
     try:
         resp = client().responses.create(**kwargs)

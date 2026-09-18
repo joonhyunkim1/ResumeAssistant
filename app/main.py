@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import company as company_svc
-from . import db, ingest, llm, rag, setup, usage, writer
+from . import db, extra, ingest, llm, profile, rag, setup, usage, writer
 from .config import BASE_DIR, settings
 
 db.init()
@@ -34,7 +34,11 @@ async def local_only(request: Request, call_next):
         origin = request.headers.get("origin")
         if origin and urlparse(origin).hostname not in _LOCAL_HOSTS:
             return JSONResponse(status_code=403, content={"detail": "허용되지 않은 요청 출처입니다."})
-    return await call_next(request)
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        # 코드 업데이트 후 브라우저가 예전 JS/CSS를 쓰지 않도록 매번 재검증 (변경 없으면 304로 가볍게 응답)
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.exception_handler(llm.LLMError)
@@ -354,6 +358,94 @@ def chat(sid: str, body: ChatIn):
         raise HTTPException(400, "메시지를 입력하세요.")
     return StreamingResponse(writer.chat(sid, body.message.strip(), body.action), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------------- 마스터 프로필 ----------------
+
+@app.get("/api/profile")
+def list_profile():
+    return {"entries": profile.list_entries(), "presets": profile.SECTION_PRESETS, "subtopics": profile.SUBTOPIC_PRESETS}
+
+
+@app.post("/api/profile")
+def create_profile_entry(body: dict):
+    try:
+        return profile.save(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.put("/api/profile/{entry_id}")
+def update_profile_entry(entry_id: str, body: dict):
+    if not profile.get(entry_id):
+        raise HTTPException(404)
+    try:
+        return profile.save(body, entry_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/profile/{entry_id}")
+def delete_profile_entry(entry_id: str):
+    profile.delete(entry_id)
+    return {"ok": True}
+
+
+@app.post("/api/profile/reindex")
+def reindex_profile():
+    return profile.reindex_all()
+
+
+# ---------------- 기타 문항 작성 ----------------
+
+@app.get("/api/extra")
+def list_extra():
+    return extra.list_records()
+
+
+@app.get("/api/extra/{rec_id}")
+def get_extra(rec_id: str):
+    rec = extra.get(rec_id)
+    if not rec:
+        raise HTTPException(404)
+    return rec
+
+
+@app.post("/api/extra")
+def create_extra(body: dict):
+    try:
+        return extra.create(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class ExtraRegenIn(BaseModel):
+    label: str
+    instruction: str = ""
+
+
+@app.post("/api/extra/{rec_id}/regenerate")
+def regenerate_extra(rec_id: str, body: ExtraRegenIn):
+    try:
+        return extra.regenerate(rec_id, body.label, body.instruction)
+    except KeyError:
+        raise HTTPException(404)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.put("/api/extra/{rec_id}")
+def update_extra(rec_id: str, body: dict):
+    try:
+        return extra.update_results(rec_id, body.get("results") or {})
+    except KeyError:
+        raise HTTPException(404)
+
+
+@app.delete("/api/extra/{rec_id}")
+def delete_extra(rec_id: str):
+    extra.delete(rec_id)
+    return {"ok": True}
 
 
 # ---------------- 사용량 ----------------

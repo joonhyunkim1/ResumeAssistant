@@ -17,7 +17,9 @@
     <button class="nav-btn" data-view="setup"><span class="ico">⚙️</span>초기 설정<span class="dot" id="setupDot" hidden></span></button>
     <div class="nav-sep"></div>
     <button class="nav-btn active" data-view="write"><span class="ico">✍️</span>작성</button>
+    <button class="nav-btn" data-view="extra"><span class="ico">🧩</span>기타 문항</button>
     <button class="nav-btn" data-view="company"><span class="ico">🏢</span>기업 분석</button>
+    <button class="nav-btn" data-view="profile"><span class="ico">🗂</span>마스터 프로필</button>
     <button class="nav-btn" data-view="docs"><span class="ico">📚</span>자료 관리</button>
     <button class="nav-btn" data-view="usage"><span class="ico">💰</span>사용량</button>
     <div class="nav-foot">
@@ -100,6 +102,30 @@
       </aside>
     </section>
 
+    <!-- ================= 기타 문항 ================= -->
+    <section class="view" id="view-extra" hidden>
+      <aside class="list-pane">
+        <div class="pane-head">
+          <h2>기타 문항</h2>
+          <button class="btn primary sm" id="newExtra">+ 새 작성</button>
+        </div>
+        <div class="list" id="extraList"></div>
+      </aside>
+      <div class="content-pane" id="extraContent"></div>
+    </section>
+
+    <!-- ================= 마스터 프로필 ================= -->
+    <section class="view" id="view-profile" hidden>
+      <aside class="list-pane">
+        <div class="pane-head">
+          <h2>마스터 프로필</h2>
+          <button class="btn primary sm" id="newProfile">+ 새 항목</button>
+        </div>
+        <div class="list" id="profileList"></div>
+      </aside>
+      <div class="content-pane" id="profileContent"></div>
+    </section>
+
     <!-- ================= 기업 분석 ================= -->
     <section class="view" id="view-company" hidden>
       <aside class="list-pane">
@@ -116,7 +142,7 @@
     <section class="view" id="view-docs" hidden>
       <div class="content-pane wide">
         <h2>참고 자료 (RAG)</h2>
-        <p class="sub">여기 등록된 자료 중 <b>사용</b>이 켜진 자료만 자소서 작성 시 검색됩니다. 원본은 이 PC의 <code>data/</code> 폴더에만 저장되며, OpenAI에는 개인정보가 마스킹된 텍스트만 전송됩니다.</p>
+        <p class="sub">여기 등록된 자료 중 <b>사용</b>이 켜진 자료와 <b>🗂 마스터 프로필</b>이 자소서 작성 시 검색됩니다. 원본은 이 PC의 <code>data/</code> 폴더에만 저장되며, OpenAI에는 개인정보가 마스킹된 텍스트만 전송됩니다.</p>
 
         <div class="card">
           <div class="tabs" id="addTabs">
@@ -188,5 +214,7 @@
 <script src="/static/tutorial.js"></script>
 <script src="/static/setup.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/profile.js"></script>
+<script src="/static/extra.js"></script>
 </body>
 </html>

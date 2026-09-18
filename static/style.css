@@ -235,7 +235,7 @@ details.sources summary { cursor: pointer; }
 .note { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
 .secret-row { display: flex; gap: 6px; align-items: center; }
 .secret-row input { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 16px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 0 16px; }
 .hint-i { font-weight: 400; color: var(--muted); font-size: 11.5px; }
 .checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .checks label.check { margin: 0; }
@@ -302,3 +302,42 @@ details.sources summary { cursor: pointer; }
 .official-grid .stat { box-shadow: none; }
 .official-main { border-color: var(--accent); }
 .stat .v.small { font-size: 18px; }
+
+/* ---------- 마스터 프로필 · 기타 문항 ---------- */
+.nav { overflow-y: auto; }
+.nav-btn { padding: 8px 4px; }
+.group-title { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); padding: 10px 12px 4px; }
+.group-title span { font-weight: 500; }
+.item-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.item-row input { margin: 0; }
+.item-row .i-label { flex: 1 1 auto; }
+.item-row .i-min, .item-row .i-max { flex: 0 0 90px; }
+.item-row .range-sep { padding: 0; }
+.link-status { font-size: 13px; margin: -4px 0 12px; }
+.link-status a { color: var(--accent); }
+#xSuggest { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 0; }
+.result-card textarea { line-height: 1.7; }
+details.sources.card summary { cursor: pointer; font-weight: 600; }
+.kv { grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
+.kv-wide { grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); }
+.item-row .i-min, .item-row .i-max { flex: 0 1 80px; min-width: 60px; }
+.item-row .i-label { min-width: 0; }
+.item-row { flex-wrap: wrap; }
+.item-row .i-label { flex: 1 1 200px; }
+
+/* ---------- 콤보박스 ---------- */
+.combo-host { position: relative; }
+.combo-input {
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%238a8f98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+.combo-menu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18); padding: 4px; max-height: 260px; overflow-y: auto;
+  font-weight: 400;
+}
+.combo-opt { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; color: var(--text); font-size: 13.5px; }
+.combo-opt small { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+.combo-opt:hover, .combo-opt.active { background: var(--accent-soft); color: var(--accent); }

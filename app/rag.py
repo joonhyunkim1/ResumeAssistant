@@ -92,10 +92,15 @@ def get_chunks(doc_id: str) -> list[str]:
     return [d for _, d in pairs]
 
 
-def search(queries: list[str], k: int | None = None) -> list[dict]:
-    """여러 검색어로 조회 후 청크별 최고 유사도로 병합. 비활성화된 자료는 제외."""
+PROFILE_PREFIX = "profile-"  # 마스터 프로필 항목은 doc_id = "profile-<항목 id>"로 색인
+
+
+def search(queries: list[str], k: int | None = None, exclude: set[str] | None = None) -> list[dict]:
+    """여러 검색어로 조회 후 청크별 최고 유사도로 병합. 비활성화된 자료는 제외, 마스터 프로필은 항상 포함."""
     k = k or settings.rag_top_k
     enabled = [r["id"] for r in db.rows("SELECT id FROM documents WHERE enabled=1")]
+    enabled += [PROFILE_PREFIX + r["id"] for r in db.rows("SELECT id FROM profile_entries WHERE indexed=1")]
+    enabled = [d for d in enabled if d not in (exclude or set())]
     queries = [q for q in queries if q.strip()]
     if not enabled or not queries or _col.count() == 0:
         return []
