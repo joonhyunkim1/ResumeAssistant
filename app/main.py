@@ -391,6 +391,19 @@ def delete_profile_entry(entry_id: str):
     return {"ok": True}
 
 
+@app.post("/api/profile/extract")
+def extract_profile(body: dict):
+    try:
+        return profile.extract(body.get("doc_ids") or [])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/profile/import")
+def import_profile(body: dict):
+    return profile.import_entries(body.get("entries") or [])
+
+
 @app.post("/api/profile/reindex")
 def reindex_profile():
     return profile.reindex_all()
