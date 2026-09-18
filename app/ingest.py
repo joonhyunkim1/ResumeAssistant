@@ -1,6 +1,7 @@
 """자료(PDF, DOCX, MD/TXT, HTML, 노션 export ZIP, URL)에서 텍스트 추출."""
 import io
 import re
+import unicodedata
 import zipfile
 from pathlib import PurePosixPath
 
@@ -22,8 +23,13 @@ class IngestError(ValueError):
     pass
 
 
+def nfc(text: str) -> str:
+    """macOS 파일명·일부 PDF의 분해형 한글(NFD: ㅎ+ㅏ+ㄴ)을 완성형(NFC)으로. 검색·표시 품질에 영향."""
+    return unicodedata.normalize("NFC", text or "")
+
+
 def clean_name(filename: str) -> str:
-    stem = PurePosixPath(filename).stem
+    stem = PurePosixPath(nfc(filename)).stem
     return _NOTION_HASH.sub("", stem) or stem
 
 
@@ -37,7 +43,7 @@ def _decode(data: bytes) -> str:
 
 
 def _normalize(text: str) -> str:
-    text = text.replace("\r\n", "\n").replace("\x00", "")
+    text = nfc(text).replace("\r\n", "\n").replace("\x00", "")
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -112,7 +118,7 @@ def fetch_url(url: str) -> tuple[str, str]:
         raise IngestError(f"URL을 가져오지 못했습니다: {e}") from e
     html = r.text
     meta = trafilatura.extract_metadata(html)
-    title = (meta.title if meta and meta.title else "") or url
+    title = nfc((meta.title if meta and meta.title else "") or url)
     text = _normalize(_html(html))
     if len(text) < 100:
         raise IngestError(

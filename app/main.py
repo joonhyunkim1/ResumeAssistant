@@ -1,5 +1,6 @@
 """FastAPI 앱: 로컬 웹 UI + REST API."""
 import json
+import logging
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -8,10 +9,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import company as company_svc
-from . import db, extra, ingest, llm, profile, rag, setup, usage, writer
+from . import db, extra, ingest, llm, maintenance, profile, rag, setup, usage, writer
 from .config import BASE_DIR, settings
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+log = logging.getLogger("app")
 db.init()
+maintenance.normalize_hangul()
 app = FastAPI(title="자기소개서 작성 도우미")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
@@ -43,7 +47,15 @@ async def local_only(request: Request, call_next):
 
 @app.exception_handler(llm.LLMError)
 async def _llm_error(_, exc: llm.LLMError):
+    log.warning("OpenAI 오류: %s", exc)
     return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+
+@app.exception_handler(Exception)
+async def _unexpected_error(request: Request, exc: Exception):
+    # 예상 못 한 오류도 화면에 이유를 보여주고, 터미널에 전체 로그를 남긴다
+    log.exception("처리 중 오류: %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": f"서버 처리 중 오류가 발생했습니다: {type(exc).__name__}: {exc}"})
 
 
 @app.get("/")
@@ -170,7 +182,7 @@ class TextIn(BaseModel):
 def add_text(body: TextIn):
     if len(body.text.strip()) < 20:
         raise HTTPException(400, "내용이 너무 짧습니다.")
-    return _store_document(body.name.strip() or "직접 입력", "text", "", body.category, body.text.strip())
+    return _store_document(ingest.nfc(body.name.strip()) or "직접 입력", "text", "", body.category, ingest.nfc(body.text.strip()))
 
 
 class DocPatch(BaseModel):
@@ -214,6 +226,7 @@ def reindex_document(doc_id: str):
         raise HTTPException(404, "원본 텍스트가 없습니다.")
     n = rag.index_document(doc_id, doc["name"], doc["category"], raw.read_text(encoding="utf-8"))
     db.execute("UPDATE documents SET chunk_count=? WHERE id=?", (n, doc_id))
+    maintenance.clear_nfc_note(doc_id)
     return db.row("SELECT * FROM documents WHERE id=?", (doc_id,))
 
 

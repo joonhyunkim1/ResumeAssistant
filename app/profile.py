@@ -4,6 +4,7 @@
 - private_note(연봉 등)는 AI로 보내지 않는다.
 """
 import json
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
 from . import db, llm, pii, prompts, rag
@@ -44,7 +45,7 @@ def get(entry_id: str | None) -> dict | None:
 
 def find(section: str, title: str) -> dict | None:
     """대주제·이름이 일치하는 항목 (공백·대소문자 무시). 소주제는 선택 칸이라 매칭에 쓰지 않는다."""
-    norm = lambda s: "".join((s or "").split()).lower()
+    norm = _norm
     for e in list_entries():
         if norm(e["section"]) == norm(section) and norm(e["title"]) == norm(title):
             return e
@@ -63,7 +64,7 @@ def _index(e: dict) -> str | None:
 
 
 def save(data: dict, entry_id: str | None = None) -> dict:
-    vals = {k: (data.get(k) or "").strip() for k in EDITABLE}
+    vals = {k: unicodedata.normalize("NFC", data.get(k) or "").strip() for k in EDITABLE}
     if not vals["section"] or not vals["title"]:
         raise ValueError("대주제와 이름(논문명·프로젝트명·회사명 등)을 입력하세요.")
     ts = db.now()
@@ -103,7 +104,7 @@ def _doc_text(doc_id: str) -> tuple[str, bool]:
 
 
 def _norm(s: str) -> str:
-    return "".join((s or "").split()).lower()
+    return "".join(unicodedata.normalize("NFC", s or "").split()).lower()
 
 
 def _clean_candidate(c: dict, source: str) -> dict | None:

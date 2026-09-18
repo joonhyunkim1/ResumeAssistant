@@ -1,11 +1,13 @@
 """자소서 작성 대화: 검색어 확장 → RAG 검색 → 스트리밍 생성 → 글자수 계산."""
 import json
+import logging
 import re
 from typing import Iterator
 
 from . import db, llm, pii, prompts, rag
 from .config import settings
 
+log = logging.getLogger("app.writer")
 _DRAFT = re.compile(r"###\s*초안\s*\n(.*?)(?=\n###\s|\Z)", re.S)
 
 
@@ -29,7 +31,8 @@ def _expand_queries(message: str, session: dict, company: dict | None) -> list[s
         resp, _ = llm.complete(settings.utility_model, prompts.QUERY_EXPANSION, "\n".join(ctx),
                                "검색어 생성", effort="low", json_mode=True)
         return [q for q in llm.parse_json(resp.output_text).get("queries", []) if isinstance(q, str)][:4]
-    except Exception:  # noqa: BLE001 — 확장 실패 시 기본 검색어만 사용
+    except Exception as e:  # noqa: BLE001 — 확장 실패 시 기본 검색어만 사용하되 기록은 남긴다
+        log.warning("검색어 확장 실패, 기본 검색어로 진행: %s", e)
         return []
 
 
@@ -93,6 +96,10 @@ def chat(session_id: str, message: str, action: str = "chat") -> Iterator[str]:
                 yield _sse(ev)
     except llm.LLMError as e:
         yield _sse({"type": "error", "message": str(e)})
+        return
+    except Exception as e:  # noqa: BLE001 — DB·검색 오류도 화면에 알림
+        log.exception("자소서 작성 중 오류")
+        yield _sse({"type": "error", "message": f"처리 중 오류가 발생했습니다: {e}"})
         return
 
     draft = extract_draft(text)

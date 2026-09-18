@@ -5,6 +5,7 @@
 - pypdf (BSD-3): pdfium 결과가 나쁠 때 비교용 예비 엔진
 """
 import io
+import logging
 import re
 import statistics
 from collections import Counter
@@ -163,7 +164,8 @@ def extract(data: bytes) -> tuple[str, list[str]]:
     for name, fn in (("pdfium", _pages_pdfium), ("pypdf", _pages_pypdf)):
         try:
             pages = fn(data)
-        except Exception:  # noqa: BLE001 — 한 엔진이 실패해도 다른 엔진으로 계속
+        except Exception as e:  # noqa: BLE001 — 한 엔진이 실패해도 다른 엔진으로 계속
+            logging.getLogger("app.pdf").warning("PDF 엔진 %s 실패: %s", name, e)
             continue
         q = quality(pages)
         candidates.append((name, pages, q))

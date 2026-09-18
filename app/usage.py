@@ -99,9 +99,13 @@ def official() -> dict:
         return {"available": False}
     start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     params = {"start_time": int(start.timestamp()), "bucket_width": "1d", "limit": 31, "group_by": ["api_key_id"]}
+    key_error = None
     try:
         app_key = find_app_key() if settings.api_key_ok else None
-        key_id = app_key["id"] if app_key else None
+    except httpx.HTTPError as e:  # 키 목록 권한이 없어도 조직 전체 금액은 보여준다
+        app_key, key_error = None, f"이 앱의 키를 조회하지 못했습니다: {e}"
+    key_id = app_key["id"] if app_key else None
+    try:
         org_total, key_total, key_days = 0.0, 0.0, []
         page = None
         for _ in range(5):
@@ -129,6 +133,7 @@ def official() -> dict:
         "available": True,
         "org_month_usd": round(org_total, 4),
         "key_found": bool(app_key),
+        "key_error": key_error,
         "key_name": app_key["name"] if app_key else None,
         "key_project": app_key["project"] if app_key else None,
         "key_month_usd": round(key_total, 4) if app_key else None,

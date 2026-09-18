@@ -14,10 +14,21 @@ async function api(path, opts = {}) {
     init.headers = { "Content-Type": "application/json" };
   }
   const res = await fetch(path, init);
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail || body));
-  return body;
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const d = body?.detail;
+    throw new Error(typeof d === "string" ? d : d ? JSON.stringify(d) : `요청 실패 (HTTP ${res.status} ${res.statusText})`);
+  }
+  return body ?? {};
 }
+
+// 버튼 등에서 처리하지 않은 오류도 조용히 사라지지 않게 화면에 알린다
+window.addEventListener("unhandledrejection", (e) => {
+  const msg = e.reason?.message || String(e.reason);
+  if (msg === "invalid range") return; // 이미 안내한 입력 오류
+  toast(`⚠️ ${msg}`, 5000);
+  console.error(e.reason);
+});
 
 let toastTimer;
 function toast(msg, ms = 2600) {
@@ -207,7 +218,9 @@ async function saveSession(silent = false) {
     toast("최소 글자수가 최대 글자수보다 클 수 없습니다");
     throw new Error("invalid range");
   }
-  const updated = await api(`/api/sessions/${s.id}`, { method: "PUT", json: form });
+  let updated;
+  try { updated = await api(`/api/sessions/${s.id}`, { method: "PUT", json: form }); }
+  catch (e) { toast(`⚠️ 저장 실패: ${e.message}`, 5000); throw e; }
   Object.assign(s, updated, { company_name: state.companies.find((c) => c.id === updated.company_id)?.name });
   renderSessionList();
   if (!silent) toast("저장했습니다");
@@ -379,6 +392,7 @@ async function send(message, action = "chat", autoAdjusted = false) {
       }
     }
     if (raf) cancelAnimationFrame(raf);
+    if (!donemeta) throw new Error(text ? "응답이 중간에 끊겼습니다. 서버 터미널 로그를 확인해 주세요." : "서버에서 응답을 받지 못했습니다.");
     el.innerHTML = `<div class="body">${renderMarkdown(text)}</div>${renderFoot(donemeta || { sources })}`;
     bindFoot(el, donemeta || {});
   } catch (e) {
@@ -692,7 +706,7 @@ async function loadUsage() {
             <div class="l">🔑 이 앱의 API 키${o.key_found ? ` <span class="badge ok">${esc(o.key_name)}</span> <span class="k">${esc(o.key_project)}</span>` : ""}</div>
             ${o.key_found
               ? `<div class="v">${fmtUsd(o.key_month_usd)}</div><div class="k">${fmtKrw(o.key_month_usd)} · 이 키로 청구된 금액만 집계</div>`
-              : `<div class="k" style="margin-top:6px">이 앱의 키를 조직의 키 목록에서 찾지 못했습니다. 프로젝트 키가 아닌 예전 사용자 키이거나, 앞·뒤 글자가 같은 키가 여러 개일 수 있습니다. 아래 조직 전체 금액만 표시합니다.</div>`}
+              : o.key_error ? `<div class="k" style="margin-top:6px">${esc(o.key_error)}</div>` : `<div class="k" style="margin-top:6px">이 앱의 키를 조직의 키 목록에서 찾지 못했습니다. 프로젝트 키가 아닌 예전 사용자 키이거나, 앞·뒤 글자가 같은 키가 여러 개일 수 있습니다. 아래 조직 전체 금액만 표시합니다.</div>`}
           </div>
           <div class="stat">
             <div class="l">🏢 조직 전체 (모든 키·앱 포함)</div>
