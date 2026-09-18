@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS documents (
     chunk_count INTEGER DEFAULT 0,
     char_count INTEGER DEFAULT 0,
     enabled INTEGER DEFAULT 1,
+    note TEXT,                          -- 추출 품질 경고
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS companies (
@@ -85,6 +86,10 @@ def conn():
 def init():
     with conn() as c:
         c.executescript(SCHEMA)
+        # 기존 DB 마이그레이션 (컬럼 추가만, 데이터는 그대로)
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(documents)")}
+        if "note" not in cols:
+            c.execute("ALTER TABLE documents ADD COLUMN note TEXT")
 
 
 def rows(sql: str, params=()) -> list[dict]:

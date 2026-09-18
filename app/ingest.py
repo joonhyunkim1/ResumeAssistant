@@ -7,7 +7,8 @@ from pathlib import PurePosixPath
 import httpx
 import trafilatura
 from docx import Document
-from pypdf import PdfReader
+
+from . import pdftext
 
 TEXT_EXTS = {".md", ".markdown", ".txt", ".csv"}
 HTML_EXTS = {".html", ".htm"}
@@ -42,12 +43,6 @@ def _normalize(text: str) -> str:
     return text.strip()
 
 
-def _pdf(data: bytes) -> str:
-    reader = PdfReader(io.BytesIO(data))
-    pages = [(p.extract_text() or "") for p in reader.pages]
-    return "\n\n".join(pages)
-
-
 def _docx(data: bytes) -> str:
     doc = Document(io.BytesIO(data))
     parts = [p.text for p in doc.paragraphs]
@@ -62,42 +57,47 @@ def _html(html: str) -> str:
     return text or ""
 
 
-def _zip(data: bytes, depth: int = 0) -> str:
+def _zip(data: bytes, depth: int = 0) -> tuple[str, list[str]]:
     """노션 'Markdown & CSV' export ZIP. 중첩 ZIP(Part-1.zip 등)도 1단계 처리."""
-    parts = []
+    parts, warnings = [], []
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         for info in sorted(zf.infolist(), key=lambda i: i.filename):
             if info.is_dir() or info.filename.startswith("__MACOSX"):
                 continue
             ext = PurePosixPath(info.filename).suffix.lower()
             if ext == ".zip" and depth < 2:
-                parts.append(_zip(zf.read(info), depth + 1))
+                body, w = _zip(zf.read(info), depth + 1)
+                parts.append(body)
+                warnings += w
             elif ext in TEXT_EXTS | HTML_EXTS | {".pdf", ".docx"}:
-                body = extract_file(info.filename, zf.read(info), inner=True)
+                body, w = extract_file(info.filename, zf.read(info), inner=True)
+                warnings += [f"{clean_name(info.filename)}: {x}" for x in w]
                 if body.strip():
                     parts.append(f"# {clean_name(info.filename)}\n\n{body}")
-    return "\n\n".join(p for p in parts if p.strip())
+    return "\n\n".join(p for p in parts if p.strip()), warnings
 
 
-def extract_file(filename: str, data: bytes, inner: bool = False) -> str:
+def extract_file(filename: str, data: bytes, inner: bool = False) -> tuple[str, list[str]]:
+    """(텍스트, 품질 경고 목록) 반환."""
     ext = PurePosixPath(filename).suffix.lower()
     if ext not in SUPPORTED:
         raise IngestError(f"지원하지 않는 형식입니다: {ext} (지원: {', '.join(sorted(SUPPORTED))})")
+    warnings: list[str] = []
     if ext == ".pdf":
-        text = _pdf(data)
+        text, warnings = pdftext.extract(data)
     elif ext == ".docx":
         text = _docx(data)
     elif ext in HTML_EXTS:
         text = _html(_decode(data))
     elif ext == ".zip":
-        text = _zip(data)
+        text, warnings = _zip(data)
     else:
         text = _decode(data)
     text = _normalize(text)
     if not inner and len(text) < 20:
         hint = " 스캔(이미지) PDF는 텍스트 추출이 안 됩니다. 텍스트 PDF나 문서로 변환해 올려주세요." if ext == ".pdf" else ""
         raise IngestError(f"'{filename}'에서 추출된 텍스트가 거의 없습니다.{hint}")
-    return text
+    return text, warnings
 
 
 def fetch_url(url: str) -> tuple[str, str]:

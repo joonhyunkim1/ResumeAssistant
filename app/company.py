@@ -5,7 +5,7 @@
 """
 import json
 
-from . import db, llm, prompts
+from . import db, ingest, llm, prompts
 from .config import settings
 
 
@@ -22,11 +22,29 @@ def _citations(resp) -> list[dict]:
     return out
 
 
-def _analysis_input(name: str, position: str, jd: str, notes: str) -> str:
+MAX_URLS = 5
+MAX_PAGE_CHARS = 8000
+
+
+def _fetch_pages(urls: list[str]) -> tuple[list[dict], list[dict]]:
+    """사용자가 준 인재상·채용공고 페이지 본문을 직접 읽어온다. (성공 목록, 실패 목록)"""
+    pages, errors = [], []
+    for url in list(dict.fromkeys(u.strip() for u in urls if u.strip()))[:MAX_URLS]:
+        try:
+            title, text = ingest.fetch_url(url)
+            pages.append({"url": url, "title": title, "text": text[:MAX_PAGE_CHARS]})
+        except ingest.IngestError as e:
+            errors.append({"url": url, "error": str(e)})
+    return pages, errors
+
+
+def _analysis_input(name: str, position: str, jd: str, notes: str, pages: list[dict]) -> str:
+    page_text = "\n\n".join(f"--- {p['title']} ({p['url']}) ---\n{p['text']}" for p in pages)
     return (
         f"회사명: {name}\n지원 직무: {position or '(미입력)'}\n\n"
         f"[채용공고/JD]\n{jd.strip() or '(미입력)'}\n\n"
-        f"[사용자가 제공한 인재상·핵심가치·메모 — 최우선 반영]\n{notes.strip() or '(없음)'}"
+        f"[사용자가 제공한 인재상·핵심가치·메모 — 최우선 반영]\n{notes.strip() or '(없음)'}\n\n"
+        f"[사용자가 제공한 참고 페이지 본문 — 최우선 반영]\n{page_text or '(없음)'}"
     )
 
 
@@ -36,10 +54,11 @@ def generate_prompt(profile: dict, jd: str) -> tuple[str, dict]:
     return resp.output_text.strip(), usage
 
 
-def analyze(name: str, position: str, jd: str, notes: str, web_search: bool) -> dict:
+def analyze(name: str, position: str, jd: str, notes: str, web_search: bool, urls: list[str] | None = None) -> dict:
+    pages, url_errors = _fetch_pages(urls or [])
     tools = [{"type": "web_search", "search_context_size": "medium"}] if web_search else None
     resp, u1 = llm.complete(
-        settings.analyzer_model, prompts.COMPANY_ANALYZER, _analysis_input(name, position, jd, notes),
+        settings.analyzer_model, prompts.COMPANY_ANALYZER, _analysis_input(name, position, jd, notes, pages),
         "기업 분석", tools=tools, json_mode=not web_search,
     )
     try:
@@ -47,6 +66,8 @@ def analyze(name: str, position: str, jd: str, notes: str, web_search: bool) -> 
     except (json.JSONDecodeError, ValueError) as e:
         raise llm.LLMError("기업 분석 결과(JSON)를 해석하지 못했습니다. 다시 시도해주세요.") from e
     profile["sources"] = _citations(resp)
+    profile["user_pages"] = [{"url": p["url"], "title": p["title"]} for p in pages]
+    profile["url_errors"] = url_errors
 
     system_prompt, u2 = generate_prompt(profile, jd)
 

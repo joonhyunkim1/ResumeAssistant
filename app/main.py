@@ -15,7 +15,7 @@ db.init()
 app = FastAPI(title="자기소개서 작성 도우미")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
-CATEGORIES = ["이력서", "자기소개서", "포트폴리오", "프로젝트", "경험/활동", "기타"]
+CATEGORIES = ["이력서", "자기소개서", "포트폴리오", "프로젝트", "논문", "경험/활동", "기타"]
 
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", settings.host}
@@ -100,7 +100,8 @@ def test_admin_key(body: KeyTestIn):
 
 # ---------------- 자료 (RAG) ----------------
 
-def _store_document(name: str, source_type: str, source: str, category: str, text: str) -> dict:
+def _store_document(name: str, source_type: str, source: str, category: str, text: str,
+                    warnings: list[str] | None = None) -> dict:
     doc_id = db.new_id()
     (settings.raw_dir / f"{doc_id}.txt").write_text(text, encoding="utf-8")
     try:
@@ -110,9 +111,9 @@ def _store_document(name: str, source_type: str, source: str, category: str, tex
         rag.delete_document(doc_id)
         raise
     db.execute(
-        "INSERT INTO documents(id, name, source_type, source, category, chunk_count, char_count, enabled, created_at)"
-        " VALUES (?,?,?,?,?,?,?,1,?)",
-        (doc_id, name, source_type, source, category, n, len(text), db.now()),
+        "INSERT INTO documents(id, name, source_type, source, category, chunk_count, char_count, enabled, note, created_at)"
+        " VALUES (?,?,?,?,?,?,?,1,?,?)",
+        (doc_id, name, source_type, source, category, n, len(text), "\n".join(warnings or []) or None, db.now()),
     )
     return db.row("SELECT * FROM documents WHERE id=?", (doc_id,))
 
@@ -127,8 +128,8 @@ def upload_documents(files: list[UploadFile] = File(...), category: str = Form("
     added, errors = [], []
     for f in files:
         try:
-            text = ingest.extract_file(f.filename, f.file.read())
-            added.append(_store_document(ingest.clean_name(f.filename), "file", f.filename, category, text))
+            text, warnings = ingest.extract_file(f.filename, f.file.read())
+            added.append(_store_document(ingest.clean_name(f.filename), "file", f.filename, category, text, warnings))
         except (ingest.IngestError, llm.LLMError) as e:
             errors.append({"file": f.filename, "error": str(e)})
         except Exception as e:  # noqa: BLE001
@@ -220,6 +221,7 @@ class CompanyIn(BaseModel):
     position: str = ""
     jd: str = ""
     notes: str = ""
+    urls: list[str] = []
     web_search: bool = True
 
 
@@ -232,7 +234,7 @@ def list_companies():
 def analyze_company(body: CompanyIn):
     if not body.name.strip():
         raise HTTPException(400, "회사명을 입력하세요.")
-    return company_svc.analyze(body.name.strip(), body.position.strip(), body.jd, body.notes, body.web_search)
+    return company_svc.analyze(body.name.strip(), body.position.strip(), body.jd, body.notes, body.web_search, body.urls)
 
 
 class CompanyUpdate(BaseModel):
@@ -286,7 +288,7 @@ class SessionIn(BaseModel):
 def list_sessions():
     return db.rows(
         "SELECT s.*, c.name AS company_name FROM sessions s LEFT JOIN companies c ON c.id=s.company_id"
-        " ORDER BY s.updated_at DESC")
+        " ORDER BY s.created_at, s.rowid")  # 새 문항은 목록 아래에 추가
 
 
 @app.post("/api/sessions")

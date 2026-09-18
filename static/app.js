@@ -359,19 +359,24 @@ function showCompanyForm() {
   $("#companyContent").innerHTML = `
     <h2>새 기업 분석</h2>
     <p class="sub">회사명과 JD를 넣으면 ① 인재상·핵심역량·키워드를 분석하고 ② 이 회사 전용 작성 지침(프롬프트)을 자동 생성합니다.</p>
+    <div class="card tip">💡 <b>회사 인재상 페이지나 채용공고(직무 소개) 페이지 URL을 함께 넣으면 훨씬 정확해집니다.</b>
+      서버가 해당 페이지 본문을 직접 읽어 분석에 최우선으로 반영하므로, 웹 검색이나 모델의 기존 지식에 의존할 때보다 공식 표현과 최신 정보가 정확하게 담깁니다.</div>
     <div class="card">
       <div class="input-row" style="gap:12px">
         <label style="flex:1">회사명 *<input id="cName" placeholder="예) 네이버" /></label>
         <label style="flex:1">지원 직무<input id="cPos" placeholder="예) 백엔드 개발" /></label>
       </div>
       <label>채용공고 / JD (주요 업무·자격 요건·우대 사항)<textarea id="cJd" rows="8" placeholder="채용공고 내용을 붙여넣으세요. 구체적일수록 정확해집니다."></textarea></label>
+      <label>참고 URL (선택, 한 줄에 하나 · 최대 5개) — 인재상·핵심가치 페이지, 채용공고/직무 소개 페이지
+        <textarea id="cUrls" rows="3" placeholder="https://www.회사.com/recruit/talent&#10;https://careers.회사.com/jobs/12345"></textarea></label>
+      <p class="sub" style="margin-top:-6px">JavaScript로 그려지는 일부 채용 사이트는 본문을 읽지 못할 수 있습니다. 이 경우 분석 결과에 표시되니, 내용을 복사해 아래 메모 칸에 붙여넣어 주세요.</p>
       <label>인재상·핵심가치·기타 메모 (선택, 최우선 반영)<textarea id="cNotes" rows="4" placeholder="회사 채용 페이지의 인재상, 현직자 정보, 면접 후기 등"></textarea></label>
       <label class="check"><input type="checkbox" id="cWeb" checked /> 웹 검색으로 최신 인재상·사업 동향 조사 (검색 1회당 약 $0.01 추가)</label>
       <button class="btn primary" id="cAnalyze">분석하고 맞춤 프롬프트 만들기</button>
       <span class="status" id="cStatus"></span>
     </div>`;
   $("#cAnalyze").onclick = async () => {
-    const body = { name: $("#cName").value, position: $("#cPos").value, jd: $("#cJd").value, notes: $("#cNotes").value, web_search: $("#cWeb").checked };
+    const body = { name: $("#cName").value, position: $("#cPos").value, jd: $("#cJd").value, notes: $("#cNotes").value, urls: $("#cUrls").value.split(/\s+/).filter((u) => /^https?:\/\//.test(u)), web_search: $("#cWeb").checked };
     if (!body.name.trim()) return toast("회사명을 입력하세요");
     $("#cAnalyze").disabled = true;
     $("#cStatus").innerHTML = `<span class="spinner"></span>분석 중입니다... (웹 검색 포함 시 1~2분)`;
@@ -419,6 +424,7 @@ function showCompany(id) {
       <div class="card"><h3>피해야 할 것</h3>${listHtml(p.avoid)}</div>
     </div>
     ${p.confidence_notes ? `<div class="card"><h3>신뢰도 메모</h3><div class="sub" style="margin:0">${esc(p.confidence_notes)}</div></div>` : ""}
+    ${(p.user_pages || []).length || (p.url_errors || []).length ? `<div class="card"><h3>직접 읽은 참고 페이지</h3><ul>${(p.user_pages || []).map((s) => `<li>✅ <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}${(p.url_errors || []).map((e) => `<li>⚠️ <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a> — <span class="sub">${esc(e.error)}</span></li>`).join("")}</ul></div>` : ""}
     ${(p.sources || []).length ? `<div class="card"><h3>웹 검색 출처</h3><ul>${p.sources.map((s) => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></div>` : ""}
     <div class="card">
       <h3>기업 맞춤 프롬프트 (자소서 작성 시 자동 적용)</h3>
@@ -465,12 +471,12 @@ async function loadDocs() {
   tbody.innerHTML = state.docs.map((d) => `
     <tr class="${d.enabled ? "" : "off"}" data-id="${d.id}">
       <td><label class="switch"><input type="checkbox" data-act="toggle" ${d.enabled ? "checked" : ""}/><span></span></label></td>
-      <td title="${esc(d.source || "")}">${d.source_type === "url" ? `<a href="${esc(d.source)}" target="_blank" rel="noopener">${esc(d.name)}</a>` : esc(d.name)}</td>
+      <td title="${esc(d.source || "")}">${d.source_type === "url" ? `<a href="${esc(d.source)}" target="_blank" rel="noopener">${esc(d.name)}</a>` : esc(d.name)}${d.note ? ` <span class="badge warn" title="${esc(d.note)}">⚠ 추출 품질</span>` : ""}</td>
       <td><select data-act="cat">${state.config.categories.map((c) => `<option ${c === d.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></td>
       <td>${typeLabel[d.source_type] || d.source_type}</td>
       <td class="num">${d.chunk_count}</td>
       <td class="num">${d.char_count.toLocaleString()}</td>
-      <td>${fmtDate(d.created_at)}</td>
+      <td title="${esc(fmtDate(d.created_at))}">${fmtDate(d.created_at).slice(2, 10)}</td>
       <td class="actions">
         <button class="btn sm ghost" data-act="view">미리보기</button>
         <button class="btn sm ghost" data-act="reindex" title="개인정보 마스킹 설정 변경 후 다시 색인">재색인</button>
@@ -516,6 +522,7 @@ async function uploadFiles(files) {
     const r = await api("/api/documents/upload", { method: "POST", body: fd });
     const msg = [];
     if (r.added.length) msg.push(`<div class="ok">✅ ${r.added.map((d) => `${esc(d.name)} (${d.chunk_count}청크)`).join(", ")} 추가됨</div>`);
+    r.added.filter((d) => d.note).forEach((d) => msg.push(`<div class="warn">⚠️ ${esc(d.name)}: ${esc(d.note).replace(/\n/g, "<br/>")}</div>`));
     r.errors.forEach((e) => msg.push(`<div class="err">⚠️ ${esc(e.file)}: ${esc(e.error)}</div>`));
     setDocStatus(msg.join(""));
     loadDocs(); refreshCostPill();
@@ -626,6 +633,9 @@ function tableHtml(head, rows) {
   await loadCompanies();
   await loadSessions();
   refreshCostPill();
-  if (state.sessions.length) openSession(state.sessions[0].id);
+  if (state.sessions.length) { // 최근에 작업한 문항 열기
+    const recent = state.sessions.reduce((a, b) => (b.updated_at > a.updated_at ? b : a));
+    openSession(recent.id);
+  }
   if (!state.config.api_key_set) switchView("setup"); // 첫 실행: 초기 설정부터
 })();
