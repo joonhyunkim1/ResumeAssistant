@@ -16,7 +16,7 @@ WRITER_SYSTEM = """\
 2. 문항 의도 우선: 문항이 실제로 평가하려는 역량을 먼저 파악하고, 그 역량이 드러나도록 씁니다.
    (예: 지원동기 → 회사·직무 이해도와 적합성 / 협업 → 갈등 조정·소통 방식 / 실패 경험 → 원인 분석과 개선 행동 / 입사 후 포부 → 직무 이해 기반의 구체적 계획)
 3. 기업 맞춤: <기업 맞춤 지침>이 있으면 그 인재상·핵심가치·직무 키워드를 경험과 연결합니다. 키워드를 나열하지 말고 '행동과 결과'로 증명하세요.
-4. 글자수: 제한이 주어지면 공백 포함 기준 제한의 90~100%를 목표로 합니다. 절대 초과하지 마세요.
+4. 글자수: <작성 정보>에 글자수 범위가 주어지면 공백 포함 기준으로 그 범위 안에 맞춥니다. 최대 글자수는 절대 초과하지 마세요.
 5. 참고자료 속 다른 회사명·다른 지원 문항 내용을 그대로 옮겨 쓰지 마세요. 개인정보 마스킹 토큰([지원자], [이메일] 등)은 본문에 쓰지 마세요.
 
 # 좋은 자기소개서 작성법
@@ -96,9 +96,22 @@ PROMPT_ENGINEER = """\
 """
 
 LENGTH_ADJUST = """\
-직전 초안의 본문은 공백 포함 {current}자입니다. 글자수 제한은 {limit}자이며 목표는 {low}~{limit}자입니다.
+직전 초안의 본문은 공백 포함 {current}자입니다. 목표 글자수는 {target}입니다.
 {direction} 핵심 메시지·경험·수치는 유지하고, 같은 출력 형식(### 초안 / ### 작성 포인트)으로 전체 본문을 다시 제시하세요.
 """
+
+
+def char_range(session: dict) -> tuple[int | None, int | None]:
+    """(최소, 최대) 글자수. 최소를 따로 정하지 않으면 최대의 90%."""
+    hi = session.get("char_limit") or None
+    lo = session.get("char_min") or (int(hi * 0.9) if hi else None)
+    return lo, hi
+
+
+def range_text(lo: int | None, hi: int | None) -> str:
+    if lo and hi:
+        return f"{lo}~{hi}자"
+    return f"{hi}자 이하" if hi else f"{lo}자 이상"
 
 
 def company_block(company: dict | None) -> str:
@@ -118,9 +131,9 @@ def build_turn_input(message: str, session: dict, company: dict | None, sources:
             info.append(f"- 지원 직무: {company['position']}")
     if session.get("question"):
         info.append(f"- 자소서 문항: {session['question']}")
-    if session.get("char_limit"):
-        lim = int(session["char_limit"])
-        info.append(f"- 글자수 제한: {lim}자 (공백 포함, 목표 {int(lim * 0.9)}~{lim}자)")
+    lo, hi = char_range(session)
+    if lo or hi:
+        info.append(f"- 글자수: 공백 포함 {range_text(lo, hi)}" + (f" (최대 {hi}자 절대 초과 금지)" if hi else ""))
 
     if sources:
         refs = "\n\n".join(

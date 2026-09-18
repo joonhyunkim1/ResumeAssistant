@@ -61,6 +61,10 @@ def get_config():
         "pii_custom_terms_count": len(settings.pii_custom_terms),
         "categories": CATEGORIES,
         "usd_krw": settings.usd_krw,
+        "monthly_budget_usd": settings.monthly_budget_usd,
+        "reasoning_effort": settings.reasoning_effort,
+        "pricing": llm.pricing()["models"],
+        "web_search_per_call": llm.pricing()["web_search_per_call"],
     }
 
 
@@ -280,6 +284,7 @@ class SessionIn(BaseModel):
     title: str = "새 문항"
     company_id: str | None = None
     question: str = ""
+    char_min: int | None = None
     char_limit: int | None = None
     model: str | None = None
 
@@ -291,21 +296,31 @@ def list_sessions():
         " ORDER BY s.created_at, s.rowid")  # 새 문항은 목록 아래에 추가
 
 
+def _check_range(body: SessionIn):
+    if body.char_min is not None and body.char_limit is not None and body.char_min > body.char_limit:
+        raise HTTPException(400, "최소 글자수가 최대 글자수보다 클 수 없습니다.")
+
+
 @app.post("/api/sessions")
 def create_session(body: SessionIn):
+    _check_range(body)
     sid, ts = db.new_id(), db.now()
     db.execute(
-        "INSERT INTO sessions(id, title, company_id, question, char_limit, model, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-        (sid, body.title, body.company_id or None, body.question, body.char_limit, body.model or settings.writer_model, ts, ts),
+        "INSERT INTO sessions(id, title, company_id, question, char_min, char_limit, model, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        (sid, body.title, body.company_id or None, body.question, body.char_min, body.char_limit,
+         body.model or settings.writer_model, ts, ts),
     )
     return db.row("SELECT * FROM sessions WHERE id=?", (sid,))
 
 
 @app.put("/api/sessions/{sid}")
 def update_session(sid: str, body: SessionIn):
+    _check_range(body)
     db.execute(
-        "UPDATE sessions SET title=?, company_id=?, question=?, char_limit=?, model=?, updated_at=? WHERE id=?",
-        (body.title, body.company_id or None, body.question, body.char_limit, body.model or settings.writer_model, db.now(), sid),
+        "UPDATE sessions SET title=?, company_id=?, question=?, char_min=?, char_limit=?, model=?, updated_at=? WHERE id=?",
+        (body.title, body.company_id or None, body.question, body.char_min, body.char_limit,
+         body.model or settings.writer_model, db.now(), sid),
     )
     return db.row("SELECT * FROM sessions WHERE id=?", (sid,))
 

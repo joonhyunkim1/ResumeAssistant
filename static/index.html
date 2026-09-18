@@ -13,6 +13,7 @@
 <div class="app">
   <nav class="nav">
     <div class="brand">자소서<br/>도우미</div>
+    <button class="nav-btn" data-view="tutorial"><span class="ico">📘</span>튜토리얼</button>
     <button class="nav-btn" data-view="setup"><span class="ico">⚙️</span>초기 설정<span class="dot" id="setupDot" hidden></span></button>
     <div class="nav-sep"></div>
     <button class="nav-btn active" data-view="write"><span class="ico">✍️</span>작성</button>
@@ -30,6 +31,11 @@
       <b>OpenAI API 키가 설정되지 않았습니다.</b> 자소서 작성·자료 등록을 하려면 먼저 키를 입력해야 합니다.
       <button class="btn sm" id="bannerSetup">초기 설정 열기 →</button>
     </div>
+
+    <!-- ================= 튜토리얼 ================= -->
+    <section class="view" id="view-tutorial" hidden>
+      <div class="content-pane wide" id="tutorialContent"></div>
+    </section>
 
     <!-- ================= 초기 설정 ================= -->
     <section class="view" id="view-setup" hidden>
@@ -77,7 +83,12 @@
           <select id="sCompany"></select>
         </label>
         <label>자소서 문항<textarea id="sQuestion" rows="5" placeholder="예) 지원 동기와 입사 후 포부를 작성해 주십시오."></textarea></label>
-        <label>글자수 제한 (공백 포함)<input id="sLimit" type="number" min="0" step="50" placeholder="예) 1000" /></label>
+        <div class="range-row">
+          <label>최소 글자수<input id="sMin" type="number" min="0" step="50" placeholder="예) 900" /></label>
+          <span class="range-sep">~</span>
+          <label>최대 글자수<input id="sLimit" type="number" min="0" step="50" placeholder="예) 1000" /></label>
+        </div>
+        <p class="hint" style="margin:-6px 0 12px">공백 포함 기준. 최소를 비워두면 최대의 90%가 목표 하한이 됩니다.</p>
         <label>작성 모델<select id="sModel"></select></label>
         <label class="check"><input type="checkbox" id="autoAdjust" checked /> 글자수 벗어나면 자동 보정(1회)</label>
         <div class="row">
@@ -174,6 +185,7 @@
 </div>
 <div class="toast" id="toast" hidden></div>
 
+<script src="/static/tutorial.js"></script>
 <script src="/static/setup.js"></script>
 <script src="/static/app.js"></script>
 </body>

@@ -56,14 +56,19 @@ def chat(session_id: str, message: str, action: str = "chat") -> Iterator[str]:
     try:
         sources: list[dict] = []
         if action == "adjust_length":
-            draft, limit = _last_draft(history), session.get("char_limit")
-            if not draft or not limit:
-                yield _sse({"type": "error", "message": "조정할 초안 또는 글자수 제한이 없습니다."})
+            draft = _last_draft(history)
+            lo, hi = prompts.char_range(session)
+            if not draft or not (lo or hi):
+                yield _sse({"type": "error", "message": "조정할 초안 또는 글자수 설정이 없습니다."})
                 return
-            cur, low = len(draft), int(limit * 0.9)
-            direction = (f"약 {cur - limit + 20}자 이상 줄이세요. 중복 표현·수식어·부차적 배경 설명부터 줄이세요." if cur > limit
-                         else f"약 {low - cur + 20}자 이상 늘리세요. 행동의 구체적 과정과 결과의 근거를 보강하되 새로운 사실을 지어내지 마세요.")
-            message = prompts.LENGTH_ADJUST.format(current=cur, limit=limit, low=low, direction=direction)
+            cur = len(draft)
+            if hi and cur > hi:
+                direction = f"약 {cur - hi + 20}자 이상 줄이세요. 중복 표현·수식어·부차적 배경 설명부터 줄이세요."
+            elif lo and cur < lo:
+                direction = f"약 {lo - cur + 20}자 이상 늘리세요. 행동의 구체적 과정과 결과의 근거를 보강하되 새로운 사실을 지어내지 마세요."
+            else:
+                direction = "이미 범위 안이지만, 범위의 가운데에 가깝게 다듬으세요."
+            message = prompts.LENGTH_ADJUST.format(current=cur, target=prompts.range_text(lo, hi), direction=direction)
             turn_input = message
         else:
             queries = [message, session.get("question") or ""]
@@ -96,6 +101,7 @@ def chat(session_id: str, message: str, action: str = "chat") -> Iterator[str]:
         "model": model,
         "draft": draft,
         "chars": count_chars(draft) if draft else None,
+        "char_min": prompts.char_range(session)[0],
         "char_limit": session.get("char_limit"),
         "cost_usd": round(turn_cost, 6),
         "sources": [{k: s[k] for k in ("name", "category", "score", "text")} for s in sources],

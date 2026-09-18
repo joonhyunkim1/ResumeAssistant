@@ -47,6 +47,7 @@ function switchView(name) {
   if (name === "docs") loadDocs();
   if (name === "company") renderCompanyList();
   if (name === "setup") renderSetup();
+  if (name === "tutorial") renderTutorial();
 }
 $$(".nav-btn").forEach((b) => (b.onclick = () => switchView(b.dataset.view)));
 $("#costPill").onclick = () => switchView("usage");
@@ -88,7 +89,7 @@ function renderSessionList() {
   list.innerHTML = state.sessions.map((s) => `
     <div class="list-item ${state.currentSession?.id === s.id ? "active" : ""}" data-id="${s.id}">
       <div class="t">${esc(s.title)}</div>
-      <div class="m">${esc(s.company_name || "기업 미지정")}${s.char_limit ? ` · ${s.char_limit}자` : ""}</div>
+      <div class="m">${esc(s.company_name || "기업 미지정")}${rangeLabel(s.char_min, s.char_limit)}</div>
     </div>`).join("");
   $$(".list-item", list).forEach((el) => (el.onclick = () => openSession(el.dataset.id)));
 }
@@ -110,6 +111,7 @@ async function openSession(id) {
   $("#sTitle").value = s.title;
   fillCompanySelect($("#sCompany"), s.company_id);
   $("#sQuestion").value = s.question || "";
+  $("#sMin").value = s.char_min || "";
   $("#sLimit").value = s.char_limit || "";
   $("#sModel").innerHTML = state.config.models.map((m) => `<option>${esc(m)}</option>`).join("");
   if (s.model && !state.config.models.includes(s.model)) $("#sModel").insertAdjacentHTML("beforeend", `<option>${esc(s.model)}</option>`);
@@ -138,6 +140,7 @@ function sessionForm() {
     title: $("#sTitle").value.trim() || "새 문항",
     company_id: $("#sCompany").value || null,
     question: $("#sQuestion").value.trim(),
+    char_min: parseInt($("#sMin").value) || null,
     char_limit: parseInt($("#sLimit").value) || null,
     model: $("#sModel").value,
   };
@@ -146,12 +149,17 @@ function sessionForm() {
 async function saveSession(silent = false) {
   const s = state.currentSession;
   if (!s) return;
-  const updated = await api(`/api/sessions/${s.id}`, { method: "PUT", json: sessionForm() });
+  const form = sessionForm();
+  if (form.char_min && form.char_limit && form.char_min > form.char_limit) {
+    toast("최소 글자수가 최대 글자수보다 클 수 없습니다");
+    throw new Error("invalid range");
+  }
+  const updated = await api(`/api/sessions/${s.id}`, { method: "PUT", json: form });
   Object.assign(s, updated, { company_name: state.companies.find((c) => c.id === updated.company_id)?.name });
   renderSessionList();
   if (!silent) toast("저장했습니다");
 }
-$("#saveSession").onclick = () => saveSession();
+$("#saveSession").onclick = () => saveSession().catch(() => {});
 
 $("#newSession").onclick = async () => {
   const s = await api("/api/sessions", { method: "POST", json: { title: `문항 ${state.sessions.length + 1}`, model: state.config.writer_model } });
@@ -197,15 +205,27 @@ function renderMarkdown(text) {
   return wrap.innerHTML;
 }
 
-function charBadge(count, limit) {
+// 글자수 범위: 최소를 비우면 최대의 90% (서버 prompts.char_range와 동일 규칙)
+function charRange(min, max) {
+  const hi = max || null;
+  const lo = min || (hi ? Math.floor(hi * 0.9) : null);
+  return [lo, hi];
+}
+function rangeText(lo, hi) { return lo && hi ? `${lo}~${hi}자` : hi ? `${hi}자 이하` : lo ? `${lo}자 이상` : ""; }
+function rangeLabel(min, max) { const [lo, hi] = charRange(min, max); return lo || hi ? ` · ${rangeText(lo, hi)}` : ""; }
+function outOfRange(n, min, max) { const [lo, hi] = charRange(min, max); return (hi && n > hi) || (lo && n < lo); }
+
+function charBadge(count, min, max) {
   if (!count) return "";
   const n = count.with_spaces;
-  let cls = "ok", note = "";
-  if (limit) {
-    if (n > limit) { cls = "danger"; note = ` · ${n - limit}자 초과`; }
-    else if (n < limit * 0.9) { cls = "warn"; note = ` · ${Math.ceil(limit * 0.9) - n}자 부족`; }
-  } else cls = "";
-  return `<span class="badge ${cls}" title="공백 제외 ${count.without_spaces}자">본문 ${n}자${limit ? ` / ${limit}자` : ""}${note}</span>`;
+  const [lo, hi] = charRange(min, max);
+  let cls = "", note = "";
+  if (lo || hi) {
+    cls = "ok";
+    if (hi && n > hi) { cls = "danger"; note = ` · ${n - hi}자 초과`; }
+    else if (lo && n < lo) { cls = "warn"; note = ` · ${lo - n}자 부족`; }
+  }
+  return `<span class="badge ${cls}" title="공백 제외 ${count.without_spaces}자">본문 ${n}자${lo || hi ? ` / 목표 ${rangeText(lo, hi)}` : ""}${note}</span>`;
 }
 
 function countChars(t) { return { with_spaces: [...t].length, without_spaces: [...t.replace(/\s/g, "")].length }; }
@@ -213,7 +233,7 @@ function countChars(t) { return { with_spaces: [...t].length, without_spaces: [.
 function renderFoot(meta) {
   if (!meta) return "";
   const parts = [];
-  if (meta.chars) parts.push(charBadge(meta.chars, meta.char_limit));
+  if (meta.chars) parts.push(charBadge(meta.chars, meta.char_min, meta.char_limit));
   if (meta.draft) parts.push(`<button class="btn sm" data-copy>초안 복사</button>`);
   if (meta.cost_usd !== undefined) parts.push(`<span title="${esc(meta.model || "")}">${fmtUsd(meta.cost_usd)} (${fmtKrw(meta.cost_usd)})</span>`);
   const srcs = meta.sources || [];
@@ -252,7 +272,7 @@ async function send(message, action = "chat", autoAdjusted = false) {
   const s = state.currentSession;
   if (!s || state.streaming) return;
   if (action === "chat" && !message.trim()) return;
-  await saveSession(true); // 설정 변경사항 반영 후 전송
+  try { await saveSession(true); } catch { return; } // 설정 변경사항 반영 후 전송
   state.streaming = true;
   $("#send").disabled = true;
   appendMessage("user", message, { action });
@@ -264,7 +284,7 @@ async function send(message, action = "chat", autoAdjusted = false) {
   box.scrollTop = box.scrollHeight;
 
   let text = "", sources = [], donemeta = null;
-  const limit = parseInt($("#sLimit").value) || null;
+  const cMin = parseInt($("#sMin").value) || null, cMax = parseInt($("#sLimit").value) || null;
   try {
     const res = await fetch(`/api/sessions/${s.id}/chat`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, action }),
@@ -278,7 +298,7 @@ async function send(message, action = "chat", autoAdjusted = false) {
       raf = 0;
       el.querySelector(".body").innerHTML = renderMarkdown(text) + `<span class="typing"></span>`;
       const m = text.match(DRAFT_RE);
-      el.querySelector(".live").innerHTML = m ? `<div class="msg-foot">${charBadge(countChars(m[1].trim()), limit)} <span>작성 중…</span></div>` : "";
+      el.querySelector(".live").innerHTML = m ? `<div class="msg-foot">${charBadge(countChars(m[1].trim()), cMin, cMax)} <span>작성 중…</span></div>` : "";
       const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
       if (nearBottom) box.scrollTop = box.scrollHeight;
     };
@@ -318,10 +338,10 @@ async function send(message, action = "chat", autoAdjusted = false) {
   }
 
   // 글자수 자동 보정 (1회)
-  if (donemeta?.chars && donemeta.char_limit && !autoAdjusted && $("#autoAdjust").checked) {
-    const n = donemeta.chars.with_spaces, L = donemeta.char_limit;
-    if (n > L || n < L * 0.9) {
-      toast(`본문 ${n}자 → 목표 ${Math.ceil(L * 0.9)}~${L}자로 자동 보정합니다`);
+  if (donemeta?.chars && (donemeta.char_min || donemeta.char_limit) && !autoAdjusted && $("#autoAdjust").checked) {
+    const n = donemeta.chars.with_spaces;
+    if (outOfRange(n, donemeta.char_min, donemeta.char_limit)) {
+      toast(`본문 ${n}자 → 목표 ${rangeText(...charRange(donemeta.char_min, donemeta.char_limit))}로 자동 보정합니다`);
       await send("", "adjust_length", true);
     }
   }
@@ -333,7 +353,7 @@ $("#input").addEventListener("keydown", (e) => {
 });
 $$("#chips button").forEach((b) => (b.onclick = () => {
   if (b.dataset.action === "adjust_length") {
-    if (!parseInt($("#sLimit").value)) return toast("먼저 글자수 제한을 입력하세요");
+    if (!parseInt($("#sLimit").value) && !parseInt($("#sMin").value)) return toast("먼저 최소 또는 최대 글자수를 입력하세요");
     send("", "adjust_length", true);
   } else send(b.dataset.msg);
 }));
@@ -601,9 +621,9 @@ async function loadUsage() {
       <div class="daily">${days.map((d) => `<div class="d" style="height:${(d.cost / maxDay) * 100}%" title="${d.day}: ${fmtUsd(d.cost)} (${fmtKrw(d.cost)})"></div>`).join("")}</div>
       <div class="daily-axis"><span>${days[0].day.slice(5)}</span><span>${days[29].day.slice(5)}</span></div>
     </div>
-    <div class="kv">
+    <div class="kv kv-wide">
       <div class="card"><h3>이번 달 · 기능별</h3>${tableHtml(["기능", "호출", "비용"], u.by_purpose.map((r) => [esc(r.purpose), r.calls, fmtUsd(r.cost)]))}</div>
-      <div class="card"><h3>이번 달 · 모델별</h3>${tableHtml(["모델", "호출", "입력 토큰", "출력 토큰", "비용"], u.by_model.map((r) => [esc(r.model), r.calls, (r.input_tokens || 0).toLocaleString(), (r.output_tokens || 0).toLocaleString(), fmtUsd(r.cost)]))}</div>
+      <div class="card"><h3>이번 달 · 모델별</h3>${tableHtml(["모델", "호출", "입력", "출력", "비용"], u.by_model.map((r) => [esc(r.model), r.calls, (r.input_tokens || 0).toLocaleString(), (r.output_tokens || 0).toLocaleString(), fmtUsd(r.cost)]))}</div>
     </div>
     <div class="card" id="officialCard"><h3>OpenAI 공식 청구 금액 (이번 달)</h3>
       ${u.official_available ? `<span class="spinner"></span>조회 중...` : `<p class="sub" style="margin:0"><code>.env</code>에 <code>OPENAI_ADMIN_KEY</code>(Admin API Key)를 넣으면 OpenAI Costs API로 <b>조직 전체</b> 공식 금액을 함께 표시합니다. 공식 금액은 일 단위로 집계되며 수 시간 늦게 반영됩니다.</p>`}
@@ -613,16 +633,31 @@ async function loadUsage() {
   if (u.official_available) {
     try {
       const o = await api("/api/usage/official");
-      $("#officialCard").innerHTML = `<h3>OpenAI 공식 청구 금액 (이번 달, UTC 기준)</h3>` + (o.error ? `<div class="err">${esc(o.error)}</div>` :
-        `<div class="stat" style="box-shadow:none;border:0;padding:0"><div class="v">${fmtUsd(o.month_usd)}</div><div class="k">${fmtKrw(o.month_usd)} · 이 키를 쓰는 다른 앱 사용분 포함</div></div>`);
+      $("#officialCard").innerHTML = `<h3>OpenAI 공식 청구 금액 (이번 달, UTC 기준)</h3>` + (o.error ? `<div class="err">${esc(o.error)}</div>` : `
+        <div class="official-grid">
+          <div class="stat official-main">
+            <div class="l">🔑 이 앱의 API 키${o.key_found ? ` <span class="badge ok">${esc(o.key_name)}</span> <span class="k">${esc(o.key_project)}</span>` : ""}</div>
+            ${o.key_found
+              ? `<div class="v">${fmtUsd(o.key_month_usd)}</div><div class="k">${fmtKrw(o.key_month_usd)} · 이 키로 청구된 금액만 집계</div>`
+              : `<div class="k" style="margin-top:6px">이 앱의 키를 조직의 키 목록에서 찾지 못했습니다. 프로젝트 키가 아닌 예전 사용자 키이거나, 앞·뒤 글자가 같은 키가 여러 개일 수 있습니다. 아래 조직 전체 금액만 표시합니다.</div>`}
+          </div>
+          <div class="stat">
+            <div class="l">🏢 조직 전체 (모든 키·앱 포함)</div>
+            <div class="v small">${fmtUsd(o.org_month_usd)}</div><div class="k">${fmtKrw(o.org_month_usd)}</div>
+          </div>
+        </div>
+        <p class="note">공식 금액은 OpenAI가 하루 단위(UTC)로 집계해 수 시간 늦게 반영됩니다. 위의 '이번 달' 추정치(${fmtUsd(u.month_usd)})와 다를 수 있는데, 집계 지연·시간대 차이·단가표(<code>app/pricing.json</code>) 차이 때문이며, <b>같은 키를 이 앱 밖에서도 썼다면</b> 그 사용분도 포함됩니다. 실제 청구 기준은 공식 금액입니다.</p>`);
     } catch (e) { $("#officialCard").innerHTML += `<div class="err">${esc(e.message)}</div>`; }
   }
 }
 
 function tableHtml(head, rows) {
   if (!rows.length) return `<div class="sub">기록 없음</div>`;
-  return `<table class="table"><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${i > 0 && /^[\d$,.]/.test(String(c)) ? "num" : ""}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  // 첫 열을 제외하고, 값이 모두 숫자·금액인 열은 헤더까지 오른쪽 정렬
+  const isNum = (c) => /^[\d$,.]+$/.test(String(c)) || c === "";
+  const numCol = head.map((_, i) => i > 0 && rows.every((r) => isNum(r[i])));
+  return `<div class="table-wrap"><table class="table compact"><thead><tr>${head.map((h, i) => `<th class="${numCol[i] ? "num" : ""}">${h}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${numCol[i] ? "num" : ""}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
 // ---------------- 초기화 ----------------
@@ -637,5 +672,7 @@ function tableHtml(head, rows) {
     const recent = state.sessions.reduce((a, b) => (b.updated_at > a.updated_at ? b : a));
     openSession(recent.id);
   }
-  if (!state.config.api_key_set) switchView("setup"); // 첫 실행: 초기 설정부터
+  // 첫 실행: 튜토리얼 → 초기 설정 순서로 안내
+  if (!tutorialSeen()) switchView("tutorial");
+  else if (!state.config.api_key_set) switchView("setup");
 })();

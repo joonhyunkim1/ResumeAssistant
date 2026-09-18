@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     title TEXT NOT NULL,
     company_id TEXT,
     question TEXT,
-    char_limit INTEGER,
+    char_min INTEGER,                   -- 최소 글자수 (없으면 최대의 90%)
+    char_limit INTEGER,                 -- 최대 글자수
     model TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -90,6 +91,9 @@ def init():
         cols = {r["name"] for r in c.execute("PRAGMA table_info(documents)")}
         if "note" not in cols:
             c.execute("ALTER TABLE documents ADD COLUMN note TEXT")
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
+        if "char_min" not in cols:
+            c.execute("ALTER TABLE sessions ADD COLUMN char_min INTEGER")
 
 
 def rows(sql: str, params=()) -> list[dict]:
