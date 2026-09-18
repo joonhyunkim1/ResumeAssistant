@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>자소서 도우미</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <nav class="nav">
+    <div class="brand">자소서<br/>도우미</div>
+    <button class="nav-btn active" data-view="write"><span class="ico">✍️</span>작성</button>
+    <button class="nav-btn" data-view="company"><span class="ico">🏢</span>기업 분석</button>
+    <button class="nav-btn" data-view="docs"><span class="ico">📚</span>자료 관리</button>
+    <button class="nav-btn" data-view="usage"><span class="ico">💰</span>사용량</button>
+    <div class="nav-foot">
+      <div class="cost-pill" id="costPill" title="이 앱에서 사용한 추정 비용">오늘 $0 · 이번 달 $0</div>
+      <div class="pii-pill" id="piiPill"></div>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="banner" id="keyBanner" hidden>
+      <b>.env에 OPENAI_API_KEY가 없습니다.</b> 프로젝트 폴더의 <code>.env.example</code>을 <code>.env</code>로 복사해 키를 넣고 서버를 재시작하세요.
+    </div>
+
+    <!-- ================= 작성 ================= -->
+    <section class="view" id="view-write">
+      <aside class="list-pane">
+        <div class="pane-head">
+          <h2>자소서 문항</h2>
+          <button class="btn primary sm" id="newSession">+ 새 문항</button>
+        </div>
+        <div class="list" id="sessionList"></div>
+      </aside>
+
+      <div class="chat-pane">
+        <div class="empty-state" id="writeEmpty">
+          <h3>문항을 선택하거나 새로 만드세요</h3>
+          <p>1) <b>자료 관리</b>에서 이력서·포트폴리오를 올리고<br/>2) <b>기업 분석</b>으로 기업 맞춤 프롬프트를 만든 뒤<br/>3) 여기서 문항별로 대화하며 작성합니다.</p>
+        </div>
+        <div class="chat" id="chat" hidden>
+          <div class="messages" id="messages"></div>
+          <div class="composer">
+            <div class="chips" id="chips">
+              <button data-msg="이 문항에 맞는 초안을 작성해줘. 참고자료에서 가장 적합한 경험을 골라서 써줘.">초안 작성</button>
+              <button data-msg="어떤 경험을 소재로 쓰면 좋을지 후보 3개를 추천하고, 각각 문항 의도·기업 인재상과 어떻게 연결되는지 설명해줘.">소재 추천</button>
+              <button data-msg="방금 초안에서 '행동' 부분을 더 구체적으로, 결과는 더 정량적으로 보강해줘.">더 구체적으로</button>
+              <button data-msg="다른 경험을 소재로 새 초안을 써줘.">다른 소재로</button>
+              <button data-msg="채용 담당자 입장에서 현재 초안을 냉정하게 평가하고 첨삭해줘. 점수(100점 만점)와 가장 큰 약점 3가지도 알려줘.">첨삭·평가</button>
+              <button data-action="adjust_length">글자수 맞추기</button>
+            </div>
+            <div class="input-row">
+              <textarea id="input" rows="3" placeholder="요청을 입력하세요. 내가 쓴 초안을 붙여넣고 첨삭을 요청해도 됩니다. (Enter 전송 · Shift+Enter 줄바꿈)"></textarea>
+              <button class="btn primary" id="send">전송</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="side-pane" id="sessionPanel" hidden>
+        <h3>문항 설정</h3>
+        <label>제목<input id="sTitle" /></label>
+        <label>지원 기업 (기업 분석 결과)
+          <select id="sCompany"></select>
+        </label>
+        <label>자소서 문항<textarea id="sQuestion" rows="5" placeholder="예) 지원 동기와 입사 후 포부를 작성해 주십시오."></textarea></label>
+        <label>글자수 제한 (공백 포함)<input id="sLimit" type="number" min="0" step="50" placeholder="예) 1000" /></label>
+        <label>작성 모델<select id="sModel"></select></label>
+        <label class="check"><input type="checkbox" id="autoAdjust" checked /> 글자수 벗어나면 자동 보정(1회)</label>
+        <div class="row">
+          <button class="btn primary" id="saveSession">저장</button>
+          <button class="btn ghost" id="clearChat">대화 비우기</button>
+          <button class="btn danger ghost" id="deleteSession">삭제</button>
+        </div>
+        <div class="hint" id="companyHint"></div>
+      </aside>
+    </section>
+
+    <!-- ================= 기업 분석 ================= -->
+    <section class="view" id="view-company" hidden>
+      <aside class="list-pane">
+        <div class="pane-head">
+          <h2>기업 프로필</h2>
+          <button class="btn primary sm" id="newCompany">+ 새 분석</button>
+        </div>
+        <div class="list" id="companyList"></div>
+      </aside>
+      <div class="content-pane" id="companyContent"></div>
+    </section>
+
+    <!-- ================= 자료 관리 ================= -->
+    <section class="view" id="view-docs" hidden>
+      <div class="content-pane wide">
+        <h2>참고 자료 (RAG)</h2>
+        <p class="sub">여기 등록된 자료 중 <b>사용</b>이 켜진 자료만 자소서 작성 시 검색됩니다. 원본은 이 PC의 <code>data/</code> 폴더에만 저장되며, OpenAI에는 개인정보가 마스킹된 텍스트만 전송됩니다.</p>
+
+        <div class="card">
+          <div class="tabs" id="addTabs">
+            <button class="tab active" data-tab="file">파일 업로드</button>
+            <button class="tab" data-tab="url">URL</button>
+            <button class="tab" data-tab="text">직접 입력</button>
+          </div>
+          <div class="add-row">
+            <label class="inline">분류 <select id="docCategory"></select></label>
+          </div>
+          <div class="tab-body" data-body="file">
+            <label class="drop" id="drop">
+              <input type="file" id="fileInput" multiple accept=".pdf,.docx,.md,.markdown,.txt,.csv,.html,.htm,.zip" hidden />
+              <div><b>파일을 끌어다 놓거나 클릭</b></div>
+              <div class="sub">PDF · DOCX · MD · TXT · HTML · ZIP(노션 내보내기: <i>Markdown &amp; CSV</i> 형식 그대로)</div>
+            </label>
+          </div>
+          <div class="tab-body" data-body="url" hidden>
+            <div class="input-row">
+              <input id="urlInput" placeholder="https://my-portfolio.com" />
+              <input id="urlName" placeholder="표시 이름 (선택)" class="narrow" />
+              <button class="btn primary" id="addUrl">추가</button>
+            </div>
+            <p class="sub">JavaScript로 그려지는 페이지(SPA·노션 공개 페이지)는 본문 추출이 안 될 수 있습니다. 이 경우 PDF로 저장해 업로드하세요.</p>
+          </div>
+          <div class="tab-body" data-body="text" hidden>
+            <input id="textName" placeholder="제목 (예: OO 공모전 경험 메모)" />
+            <textarea id="textBody" rows="6" placeholder="경험, 성과, 수치 등을 자유롭게 적어주세요. 자료에 없는 경험을 보충할 때 유용합니다."></textarea>
+            <button class="btn primary" id="addText">추가</button>
+          </div>
+          <div class="status" id="docStatus"></div>
+        </div>
+
+        <table class="table" id="docTable">
+          <thead><tr><th>사용</th><th>이름</th><th>분류</th><th>유형</th><th class="num">청크</th><th class="num">글자수</th><th>등록일</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty-inline" id="docEmpty">아직 등록된 자료가 없습니다.</div>
+
+        <div class="card">
+          <h3>검색 테스트</h3>
+          <p class="sub">문장을 넣으면 자소서 작성 시 어떤 자료가 검색되는지 미리 확인할 수 있습니다.</p>
+          <div class="input-row">
+            <input id="searchInput" placeholder="예) 팀 프로젝트에서 갈등을 해결한 경험" />
+            <button class="btn" id="searchBtn">검색</button>
+          </div>
+          <div id="searchResults"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 사용량 ================= -->
+    <section class="view" id="view-usage" hidden>
+      <div class="content-pane wide" id="usageContent"></div>
+    </section>
+  </main>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head"><h3 id="modalTitle"></h3><button class="btn ghost sm" id="modalClose">닫기</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
