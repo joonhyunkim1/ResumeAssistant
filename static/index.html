@@ -13,6 +13,8 @@
 <div class="app">
   <nav class="nav">
     <div class="brand">자소서<br/>도우미</div>
+    <button class="nav-btn" data-view="setup"><span class="ico">⚙️</span>초기 설정<span class="dot" id="setupDot" hidden></span></button>
+    <div class="nav-sep"></div>
     <button class="nav-btn active" data-view="write"><span class="ico">✍️</span>작성</button>
     <button class="nav-btn" data-view="company"><span class="ico">🏢</span>기업 분석</button>
     <button class="nav-btn" data-view="docs"><span class="ico">📚</span>자료 관리</button>
@@ -25,8 +27,14 @@
 
   <main class="main">
     <div class="banner" id="keyBanner" hidden>
-      <b>.env에 OPENAI_API_KEY가 없습니다.</b> 프로젝트 폴더의 <code>.env.example</code>을 <code>.env</code>로 복사해 키를 넣고 서버를 재시작하세요.
+      <b>OpenAI API 키가 설정되지 않았습니다.</b> 자소서 작성·자료 등록을 하려면 먼저 키를 입력해야 합니다.
+      <button class="btn sm" id="bannerSetup">초기 설정 열기 →</button>
     </div>
+
+    <!-- ================= 초기 설정 ================= -->
+    <section class="view" id="view-setup" hidden>
+      <div class="content-pane wide" id="setupContent"></div>
+    </section>
 
     <!-- ================= 작성 ================= -->
     <section class="view" id="view-write">
@@ -164,6 +172,7 @@
 </div>
 <div class="toast" id="toast" hidden></div>
 
+<script src="/static/setup.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

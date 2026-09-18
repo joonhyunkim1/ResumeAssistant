@@ -1,13 +1,14 @@
 """FastAPI 앱: 로컬 웹 UI + REST API."""
 import json
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import company as company_svc
-from . import db, ingest, llm, rag, usage, writer
+from . import db, ingest, llm, rag, setup, usage, writer
 from .config import BASE_DIR, settings
 
 db.init()
@@ -17,9 +18,27 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 CATEGORIES = ["이력서", "자기소개서", "포트폴리오", "프로젝트", "경험/활동", "기타"]
 
 
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", settings.host}
+
+
+@app.middleware("http")
+async def local_only(request: Request, call_next):
+    """이 PC의 브라우저에서 온 요청만 허용 (.env 수정 API를 다른 웹사이트가 호출하지 못하게 차단).
+    - Host 검사: DNS rebinding 방지
+    - Origin 검사: 다른 사이트에서 보낸 POST/PUT/DELETE 차단
+    """
+    host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]")
+    if host not in _LOCAL_HOSTS:
+        return JSONResponse(status_code=403, content={"detail": "로컬에서만 접속할 수 있습니다."})
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        if origin and urlparse(origin).hostname not in _LOCAL_HOSTS:
+            return JSONResponse(status_code=403, content={"detail": "허용되지 않은 요청 출처입니다."})
+    return await call_next(request)
+
+
 @app.exception_handler(llm.LLMError)
 async def _llm_error(_, exc: llm.LLMError):
-    from fastapi.responses import JSONResponse
     return JSONResponse(status_code=502, content={"detail": str(exc)})
 
 
@@ -31,7 +50,7 @@ def index():
 @app.get("/api/config")
 def get_config():
     return {
-        "api_key_set": bool(settings.openai_api_key),
+        "api_key_set": settings.api_key_ok,
         "admin_key_set": bool(settings.openai_admin_key),
         "writer_model": settings.writer_model,
         "analyzer_model": settings.analyzer_model,
@@ -43,6 +62,40 @@ def get_config():
         "categories": CATEGORIES,
         "usd_krw": settings.usd_krw,
     }
+
+
+# ---------------- 초기 설정 (.env) ----------------
+
+@app.get("/api/setup")
+def get_setup():
+    state = setup.get_state()
+    state["pricing"] = llm.pricing()["models"]
+    return state
+
+
+@app.put("/api/setup")
+def save_setup(body: dict):
+    try:
+        state = setup.save(body.get("values") or {})
+    except setup.SetupError as e:
+        raise HTTPException(400, str(e))
+    state["pricing"] = llm.pricing()["models"]
+    return state
+
+
+class KeyTestIn(BaseModel):
+    key: str | None = None
+    models: list[str] = []
+
+
+@app.post("/api/setup/test-key")
+def test_key(body: KeyTestIn):
+    return setup.test_api_key(body.key, body.models)
+
+
+@app.post("/api/setup/test-admin-key")
+def test_admin_key(body: KeyTestIn):
+    return setup.test_admin_key(body.key)
 
 
 # ---------------- 자료 (RAG) ----------------

@@ -15,8 +15,8 @@ if [ ! -f .venv/.installed ] || [ requirements.txt -nt .venv/.installed ]; then
 fi
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "⚠️  .env 파일을 만들었습니다. OPENAI_API_KEY를 입력한 뒤 다시 실행하세요."
-  exit 1
+  chmod 600 .env
+  echo "▶ .env 파일을 만들었습니다. 브라우저의 '초기 설정' 화면에서 API 키를 입력하세요."
 fi
 
 HOST=$(grep -E '^HOST=' .env | cut -d= -f2); HOST=${HOST:-127.0.0.1}

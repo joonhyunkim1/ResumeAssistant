@@ -6,6 +6,7 @@
 - OpenAI로 보내기 전에 **개인정보를 자동으로 마스킹**합니다.
 - API 사용 비용을 **실시간으로 추정해 표시**합니다.
 - 별도 DB 서버나 Node.js 없이 **Python 하나로 실행**됩니다. 비용은 OpenAI API 사용료만 듭니다.
+- 처음 실행하면 **초기 설정 화면**이 떠서, API 키 발급부터 `.env` 저장까지 웹에서 안내합니다.
 
 ---
 
@@ -15,20 +16,30 @@
 2. [동작 구조](#동작-구조)
 3. [기술 스택](#기술-스택)
 4. [설치 및 실행](#설치-및-실행)
-5. [환경 변수 (.env)](#환경-변수-env)
-6. [사용 가이드](#사용-가이드)
-7. [프롬프트 엔지니어링 설계](#프롬프트-엔지니어링-설계)
-8. [RAG 설계](#rag-설계)
-9. [개인정보 보호](#개인정보-보호)
-10. [비용 추적](#비용-추적)
-11. [프로젝트 구조](#프로젝트-구조)
-12. [REST API](#rest-api)
-13. [문제 해결](#문제-해결)
-14. [한계 및 향후 계획](#한계-및-향후-계획)
+5. [초기 설정 화면 (.env 웹 편집)](#초기-설정-화면-env-웹-편집)
+6. [환경 변수 (.env)](#환경-변수-env)
+7. [사용 가이드](#사용-가이드)
+8. [프롬프트 엔지니어링 설계](#프롬프트-엔지니어링-설계)
+9. [RAG 설계](#rag-설계)
+10. [개인정보 보호](#개인정보-보호)
+11. [비용 추적](#비용-추적)
+12. [프로젝트 구조](#프로젝트-구조)
+13. [REST API](#rest-api)
+14. [문제 해결](#문제-해결)
+15. [한계 및 향후 계획](#한계-및-향후-계획)
+16. [라이선스](#라이선스)
 
 ---
 
 ## 주요 기능
+
+### ⚙️ 초기 설정 (웹에서 .env 편집)
+- `.env`가 없거나 API 키가 설정되지 않은 상태로 실행하면 **초기 설정 화면이 먼저 열립니다.** 상단 경고 배너와 메뉴의 빨간 점도 함께 표시됩니다.
+- 설정은 4단계로 진행합니다: **① API 키 → ② 모델 → ③ 개인정보 → ④ 비용 관리**
+  - 단계마다 **키 발급 방법을 단계별로 안내**하는 가이드가 있습니다.
+  - 추천값이 미리 채워져 있어, 키만 넣고 저장해도 바로 쓸 수 있습니다.
+- **키 확인(무료)**: 입력한 키가 유효한지, 선택한 모델을 이 키로 쓸 수 있는지 OpenAI에 직접 확인합니다.
+- **저장**하면 로컬 `.env`에 기록되고 **서버 재시작 없이 즉시 적용**됩니다.
 
 ### ✍️ 자소서 작성 (문항별 대화)
 - 문항마다 **작성 세션**을 만들고 지원 기업, 문항, 글자수 제한, 작성 모델을 설정합니다.
@@ -142,8 +153,9 @@ cd ResumeAssistant
 
 `run.sh`가 하는 일은 다음과 같습니다.
 1. `.venv` 가상환경을 만들고 `requirements.txt`를 설치합니다.
-2. `.env`가 없으면 `.env.example`을 복사해 만든 뒤 멈춥니다.
-3. `.env`의 `OPENAI_API_KEY`를 채우고 **다시 `./run.sh`**를 실행하면, 서버가 뜨고 브라우저에서 http://127.0.0.1:8000 이 열립니다.
+2. `.env`가 없으면 `.env.example`을 복사해 만듭니다(권한 600).
+3. 서버를 실행하고 브라우저에서 http://127.0.0.1:8000 을 엽니다.
+4. 처음이라면 **초기 설정 화면**이 뜹니다. 안내에 따라 API 키를 발급받아 붙여넣고 **저장**하면 끝입니다.
 
 ### 수동 실행 (Windows 포함)
 
@@ -151,16 +163,52 @@ cd ResumeAssistant
 python -m venv .venv
 # Windows: .venv\Scripts\activate   /  macOS·Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # Windows: copy .env.example .env
-# .env에 OPENAI_API_KEY 입력
 uvicorn app.main:app --host 127.0.0.1 --port 8000
+# 브라우저에서 http://127.0.0.1:8000 → 초기 설정 화면에서 키 입력
 ```
 
 > 서버는 기본적으로 `127.0.0.1`(내 PC)에서만 접속할 수 있습니다. 인증 기능이 없으므로 `HOST=0.0.0.0`으로 외부에 열지 마세요.
 
 ---
 
+## 초기 설정 화면 (.env 웹 편집)
+
+### 동작 방식
+```
+브라우저(초기 설정) ──PUT /api/setup──▶ 로컬 FastAPI 서버 ──▶ 프로젝트 폴더/.env 파일 기록 (권한 600)
+                                                    └──▶ settings.reload() → 재시작 없이 즉시 반영
+브라우저(키 확인)   ──POST /api/setup/test-key──▶ 서버 ──▶ api.openai.com/v1/models (과금 없음)
+```
+
+### 안전장치
+| 항목 | 내용 |
+|---|---|
+| 저장 위치 | 이 PC의 `.env` 파일에만 저장합니다. 외부 서버로 전송하지 않습니다. `.gitignore`에 포함되어 Git에 올라가지 않습니다 |
+| 파일 권한 | 저장할 때마다 `600`(본인만 읽기/쓰기)으로 설정하고, 임시 파일에 쓴 뒤 교체하는 원자적 저장으로 파일 손상을 막습니다 |
+| 키 노출 방지 | 저장된 키는 브라우저로 **마스킹된 값만** 돌려줍니다(예: `sk-proj…abcd`). 빈 칸으로 저장하면 기존 키를 유지합니다 |
+| 입력 검증 | 키 형식(`sk-`, `sk-admin-`), 숫자 범위, 선택지를 확인합니다. 줄바꿈과 따옴표를 제거해 `.env` 인젝션을 막고, 편집 가능한 항목만 허용합니다 |
+| 로컬 전용 | `Host` 헤더를 검사해 DNS rebinding을 막고, `Origin`을 검사해 다른 웹사이트에서 보낸 POST/PUT/DELETE를 거부합니다(403) |
+| 기존 파일 보존 | 기존 `.env`의 주석과 순서를 유지하며 값만 교체합니다 |
+
+> `HOST`, `PORT`, `DATA_DIR`는 서버 실행 시점에만 읽기 때문에 웹에서 편집할 수 없습니다. 바꾸려면 `.env`를 직접 수정한 뒤 재시작하세요.
+
+### 직접 수정하고 싶다면
+1. 프로젝트 폴더의 `.env`를 텍스트 편집기로 엽니다. 없으면 `.env.example`을 복사해 만듭니다.
+2. `KEY=값` 형식으로 공백 없이 입력합니다.
+3. 브라우저를 새로고침하면 반영됩니다. `HOST`, `PORT`, `DATA_DIR`를 바꿨다면 서버를 재시작하세요.
+
+### OpenAI API 키 발급 요약
+1. [platform.openai.com](https://platform.openai.com/)에 로그인합니다. ChatGPT Plus 구독과 API 요금은 **별개**입니다.
+2. [Billing](https://platform.openai.com/settings/organization/billing/overview)에서 결제수단을 등록하고 크레딧을 충전합니다(최소 $5). 자동 충전은 꺼두기를 권장합니다.
+3. [API keys](https://platform.openai.com/api-keys) → **Create new secret key** → 표시된 `sk-proj-…` 키를 복사합니다. 한 번만 표시됩니다.
+4. 초기 설정 화면에 붙여넣고 **키 확인** → **저장**을 누릅니다.
+5. (권장) [Limits](https://platform.openai.com/settings/organization/limits)에서 월 사용 한도를 설정합니다.
+
+---
+
 ## 환경 변수 (.env)
+
+모든 항목은 **웹의 초기 설정 화면**에서 편집할 수 있습니다(`HOST`, `PORT`, `DATA_DIR` 제외).
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
@@ -318,13 +366,16 @@ ResumeAssistant/
 │   ├── ingest.py      # PDF/DOCX/MD/HTML/ZIP/URL 텍스트 추출
 │   ├── pii.py         # 개인정보 마스킹
 │   ├── usage.py       # 비용 집계, 공식 Costs API 조회
+│   ├── setup.py       # 초기 설정: .env 읽기/쓰기, 입력 검증, 키 확인
 │   └── pricing.json   # 모델 단가표
 ├── static/
 │   ├── index.html     # 단일 페이지 UI
 │   ├── app.js         # 프론트엔드 로직 (SSE 스트리밍 포함)
+│   ├── setup.js       # 초기 설정 튜토리얼 화면
 │   └── style.css      # 라이트/다크 테마
 ├── data/              # (자동 생성, Git 제외) SQLite, Chroma, 원본 텍스트
 ├── .env.example       # 환경 변수 템플릿
+├── LICENSE            # MIT
 ├── requirements.txt
 └── run.sh             # 설치 + 실행 스크립트
 ```
@@ -338,6 +389,10 @@ ResumeAssistant/
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/api/config` | 모델 목록, 마스킹 상태 등 설정 |
+| GET | `/api/setup` | 초기 설정 값 (비밀 키는 마스킹), 편집 가능 항목, 모델 단가 |
+| PUT | `/api/setup` | `.env` 저장과 즉시 반영 (`{"values": {...}}`) |
+| POST | `/api/setup/test-key` | API 키 유효성과 모델 사용 가능 여부 확인 (무료) |
+| POST | `/api/setup/test-admin-key` | Admin 키 확인 |
 | GET | `/api/documents` | 자료 목록 |
 | POST | `/api/documents/upload` | 파일 업로드 (multipart, `files[]`, `category`) |
 | POST | `/api/documents/url` | URL 자료 추가 |
@@ -365,10 +420,12 @@ ResumeAssistant/
 
 | 증상 | 해결 |
 |---|---|
-| 상단에 "OPENAI_API_KEY가 없습니다" | `.env`에 키를 넣고 서버를 재시작 |
+| 상단에 "OpenAI API 키가 설정되지 않았습니다" | 왼쪽 **⚙️ 초기 설정**에서 키를 입력하고 저장 (재시작 불필요) |
+| 키 확인 시 "유효하지 않은 키" | 복사할 때 앞뒤가 잘렸거나, 삭제(Revoke)된 키입니다. 새로 발급하세요 |
+| 키 확인 시 "크레딧이 없거나 한도 초과" | Billing에서 크레딧을 충전하거나 Limits를 확인 |
 | PDF에서 "추출된 텍스트가 거의 없습니다" | 스캔(이미지) PDF입니다. 텍스트 PDF나 DOCX로 변환해 올리세요 |
 | URL에서 "본문을 거의 추출하지 못했습니다" | JavaScript로 그리는 페이지(SPA, 노션 공개 페이지)입니다. 브라우저에서 PDF로 저장해 업로드하세요 |
-| 모델 호출 오류 (model not found 등) | 계정에서 쓸 수 있는 모델명으로 `.env`의 `*_MODEL`과 `AVAILABLE_MODELS`를 수정 |
+| 모델 호출 오류 (model not found 등) | 초기 설정에서 **키 확인**을 눌러 ⚠ 표시된 모델을 다른 모델로 변경 |
 | 사용량 비용이 0으로 표시 | `app/pricing.json`에 해당 모델 단가 추가 |
 | 기업 분석 JSON 해석 실패 | 다시 시도하거나 웹 검색을 끄고 실행 (웹 검색을 끄면 JSON 모드가 강제됨) |
 | 임베딩 모델을 바꾼 뒤 검색 오류 | 벡터 차원이 달라집니다. `data/chroma`를 지우고 자료를 다시 등록하세요 |
@@ -383,3 +440,9 @@ ResumeAssistant/
 - [ ] 문항별 초안 버전 관리와 비교(diff)
 - [ ] 하이브리드 검색(BM25 + 벡터)과 재순위화
 - [ ] 자소서 결과물 DOCX/PDF 내보내기
+
+---
+
+## 라이선스
+
+[MIT License](LICENSE) © 2026 joonhyunkim1

@@ -46,9 +46,22 @@ function switchView(name) {
   if (name === "usage") loadUsage();
   if (name === "docs") loadDocs();
   if (name === "company") renderCompanyList();
+  if (name === "setup") renderSetup();
 }
 $$(".nav-btn").forEach((b) => (b.onclick = () => switchView(b.dataset.view)));
 $("#costPill").onclick = () => switchView("usage");
+$("#bannerSetup").onclick = () => switchView("setup");
+
+// 설정 저장 후 호출: 배너·개인정보 표시·모델 목록 갱신
+async function applyConfig() {
+  state.config = await api("/api/config");
+  $("#keyBanner").hidden = state.config.api_key_set;
+  $("#setupDot").hidden = state.config.api_key_set;
+  const pii = $("#piiPill");
+  pii.textContent = state.config.pii_masking ? "🔒 개인정보\n마스킹 ON" : "개인정보\n마스킹 OFF";
+  pii.style.whiteSpace = "pre-line";
+  pii.classList.toggle("on", state.config.pii_masking);
+}
 
 async function refreshCostPill() {
   try {
@@ -607,16 +620,12 @@ function tableHtml(head, rows) {
 
 // ---------------- 초기화 ----------------
 (async function init() {
-  state.config = await api("/api/config");
-  $("#keyBanner").hidden = state.config.api_key_set;
+  await applyConfig();
   $("#docCategory").innerHTML = state.config.categories.map((c) => `<option>${esc(c)}</option>`).join("");
   $("#docCategory").value = "이력서";
-  const pii = $("#piiPill");
-  pii.textContent = state.config.pii_masking ? "🔒 개인정보\n마스킹 ON" : "개인정보\n마스킹 OFF";
-  pii.style.whiteSpace = "pre-line";
-  pii.classList.toggle("on", state.config.pii_masking);
   await loadCompanies();
   await loadSessions();
   refreshCostPill();
   if (state.sessions.length) openSession(state.sessions[0].id);
+  if (!state.config.api_key_set) switchView("setup"); // 첫 실행: 초기 설정부터
 })();

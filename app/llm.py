@@ -10,6 +10,7 @@ from .config import settings
 
 _PRICING = json.loads((Path(__file__).parent / "pricing.json").read_text(encoding="utf-8"))
 _client: OpenAI | None = None
+_client_key = ""
 
 
 class LLMError(RuntimeError):
@@ -17,12 +18,17 @@ class LLMError(RuntimeError):
 
 
 def client() -> OpenAI:
-    global _client
-    if not settings.openai_api_key:
-        raise LLMError(".env 파일에 OPENAI_API_KEY가 설정되지 않았습니다.")
-    if _client is None:
+    global _client, _client_key
+    if not settings.api_key_ok:
+        raise LLMError("OpenAI API 키가 설정되지 않았습니다. 왼쪽 메뉴의 '초기 설정'에서 키를 입력하세요.")
+    if _client is None or _client_key != settings.openai_api_key:  # 설정 화면에서 키가 바뀌면 재생성
         _client = OpenAI(api_key=settings.openai_api_key)
+        _client_key = settings.openai_api_key
     return _client
+
+
+def pricing() -> dict:
+    return _PRICING
 
 
 def _price(model: str) -> dict | None:
